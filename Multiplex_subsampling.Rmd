@@ -1,0 +1,1851 @@
+---
+title: "Multiplex subsampling"
+output: html_document
+---
+
+###  number of SNPs falling in regulatory windows for different sample sizes #####
+
+```{r}
+library(data.table)
+library(valr)
+library(tidyverse)
+```
+
+```{r}
+vcf<-fread("Joint_genotyping.vcf")
+
+vcf<-vcf[,-c(3:9)]
+vcf[] <- lapply(vcf, function(x) sub(":.*", "", x))
+vcf[] <- lapply(vcf, function(x) gsub("\\|", "/", x))
+
+#overlap with regulatory windows.. which ones get to stay!
+
+regsites<-read.table("10May23_bothconditions_regulatorywindows.bed")
+colnames(regsites)<-c("chrom", "start", "end")
+
+SNPsites<-vcf[,1:2]
+SNPsites$end<-as.numeric(SNPsites$POS)
+SNPsites$start<-SNPsites$end-1
+SNPsites<-SNPsites[,c(1,3,4)]
+colnames(SNPsites)<-c("chrom", "end", "start")
+SNPsites$SNPsite= paste(SNPsites$chrom, SNPsites$end, sep="_")
+vcf$SNPsite= paste(vcf$"#CHROM",vcf$POS, sep="_")
+```
+
+```{r}
+SNPintersect<-bed_intersect(SNPsites, regsites) %>%
+  filter(.overlap != 0)
+```
+
+```{r}
+Reg_SNPs<-as.data.frame(subset(vcf, SNPsite %in% SNPintersect$SNPsite.x))
+```
+
+
+##########All populations###########
+
+### filter so there is one library per individual
+```{r}
+All_samples<-c("HG00101_p1", 
+                  "HG00171_p2",
+                 "HG00178_p1", 
+                 "HG00181_p2",
+                 "HG00274_p2",
+                  "HG01504_p2",
+                 "HG01678_p2",
+                  "HG01776_p2",
+                 "HG02224_p1", 
+                 "NA20522_p2",    
+                 "NA07037_p2",  
+                 "NA20813_p2",
+               "HG03105_p2", 
+                 "HG03280_p1",  
+                  "HG03117_p2", 
+                  "NA19118_p2", 
+                  "NA19225_p2",
+                 "NA19385_p1", 
+                 "NA19332_p1",
+                 "HG03433_p1", 
+                 "HG03538_p1" , 
+                 "HG02646_p1",
+                "NA19041_p2", 
+                "NA19377_p2", 
+                "HG03078_p2")
+```
+
+#in one sample
+```{r}
+Reg_SNPs_all<-as.data.frame(Reg_SNPs[,All_samples])
+
+summary_list <- lapply(Reg_SNPs_all, table)
+
+allids<-do.call(rbind, summary_list)
+
+One_sample_df_All<-as.data.frame(allids) %>%
+  rename(Num_sites="0/1") %>%
+  select(Num_sites) %>%
+  mutate(Sample_num = 1)%>% 
+  mutate(Region= "All")
+```
+
+#sites shared between 2 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 2, replace = FALSE)
+  return(pair)
+}
+
+# Generate 100 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 2, byrow = TRUE))
+colnames(pairs_df) <- c("Number1", "Number2")
+subset_pairs<-subset(pairs_df, Number1 < Number2)
+unique_df <- subset_pairs[!duplicated(subset_pairs), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+vcf1<-Reg_SNPs_all[,id1]
+vcf2<-Reg_SNPs_all[,id2]
+vcf_both<-cbind(vcf1, vcf2)
+
+vcf_het<-subset(vcf_both, (vcf1 == "1/1" & vcf2 == "0/0") | (vcf2 == "1/1" & vcf1 == "0/0" | (vcf1 == "0/1" | vcf2 == "0/1")))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+
+Two_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 2) %>% 
+  mutate(Region= "All")
+```
+
+
+#sites shared between 4 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 4, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 4, byrow = TRUE))
+
+#Function to reorder rows from smallest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAllame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ]
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+
+vcf1<-Reg_SNPs_all[,id1]
+vcf2<-Reg_SNPs_all[,id2]
+vcf3<-Reg_SNPs_all[,id3]
+vcf4<-Reg_SNPs_all[,id4]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Four_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 4) %>% 
+  mutate(Region= "All")
+```
+
+
+#sites shared between 8 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 8, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 8, byrow = TRUE))
+
+#Function to reorder rows from smallest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAllame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+
+vcf1<-Reg_SNPs_all[,id1]
+vcf2<-Reg_SNPs_all[,id2]
+vcf3<-Reg_SNPs_all[,id3]
+vcf4<-Reg_SNPs_all[,id4]
+vcf5<-Reg_SNPs_all[,id5]
+vcf6<-Reg_SNPs_all[,id6]
+vcf7<-Reg_SNPs_all[,id7]
+vcf8<-Reg_SNPs_all[,id8]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Eight_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 8) %>% 
+  mutate(Region= "All")
+```
+
+
+
+#sites shared between 12 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 12, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 12, byrow = TRUE))
+
+#Function to reorder rows from smallest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAllame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+id9<-unique_100[i,9]
+id10<-unique_100[i,10]
+id11<-unique_100[i,11]
+id12<-unique_100[i,12]
+
+vcf1<-Reg_SNPs_all[,id1]
+vcf2<-Reg_SNPs_all[,id2]
+vcf3<-Reg_SNPs_all[,id3]
+vcf4<-Reg_SNPs_all[,id4]
+vcf5<-Reg_SNPs_all[,id5]
+vcf6<-Reg_SNPs_all[,id6]
+vcf7<-Reg_SNPs_all[,id7]
+vcf8<-Reg_SNPs_all[,id8]
+vcf9<-Reg_SNPs_all[,id9]
+vcf10<-Reg_SNPs_all[,id10]
+vcf11<-Reg_SNPs_all[,id11]
+vcf12<-Reg_SNPs_all[,id12]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8, vcf9, vcf10, vcf11, vcf12)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Twelve_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 12) %>% 
+  mutate(Region= "All")
+```
+
+
+### Bind together and plot!! ###
+```{r}
+All_plot_data<-do.call(bind_rows, list(One_sample_df_All, Two_sample_df_All, Four_sample_df_All, Eight_sample_df_All, Twelve_sample_df_All))
+```
+
+#Save
+```{r}
+write.table(All_plot_data, "Allpops_hetsites_data.txt", row.names = F, quote=F)
+```
+
+
+```{r}
+ggplot(data=All_plot_data, aes(x=as.factor(Sample_num), y=Num_sites)) +
+  geom_boxplot()
+```
+
+
+
+###### EUROPEAN SAMPLES ONLY ########
+
+
+```{r}
+EUR_samples <- c("HG00101_p1", 
+                  "HG00171_p2",
+                 "HG00178_p1", 
+                 "HG00181_p2",
+                 "HG00274_p2",
+                  "HG01504_p2",
+                 "HG01678_p2",
+                  "HG01776_p2",
+                 "HG02224_p1", 
+                 "NA20522_p2",    
+                 "NA07037_p2",  
+                 "NA20813_p2")
+```
+
+#in one sample
+```{r}
+Reg_SNPs_EUR<-as.data.frame(Reg_SNPs[,EUR_samples])
+
+summary_list <- lapply(Reg_SNPs_EUR, table)
+
+EURids<-do.call(rbind, summary_list)
+
+One_sample_df_EUR<-as.data.frame(EURids) %>%
+  rename(Num_sites="0/1") %>%
+  select(Num_sites) %>%
+  mutate(Sample_num = 1)%>% 
+  mutate(Region= "EUR")
+```
+
+#sites shared between 2 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:12, 2, replace = FALSE)
+  return(pair)
+}
+
+# Generate 1000 pairs of numbers
+pairs <- replicate(1000, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 2, byrow = TRUE))
+colnames(pairs_df) <- c("Number1", "Number2")
+subset_pairs<-subset(pairs_df, Number1 < Number2)
+unique_df <- subset_pairs[!duplicated(subset_pairs), ] 
+unique_100<-unique_df[1:66,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 66 , ncol = 1))
+
+for (i in 1:66) {
+
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+vcf1<-Reg_SNPs_EUR[,id1]
+vcf2<-Reg_SNPs_EUR[,id2]
+vcf_both<-cbind(vcf1, vcf2)
+
+vcf_het<-subset(vcf_both, (vcf1 == "1/1" & vcf2 == "0/0") | (vcf2 == "1/1" & vcf1 == "0/0" | (vcf1 == "0/1" | vcf2 == "0/1")))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+
+Two_sample_df_EUR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 2) %>% 
+  mutate(Region= "EUR")
+```
+
+
+#sites shared between 4 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:12, 4, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 4, byrow = TRUE))
+
+#Function to reorder rows from smEURest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datEURame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ]
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+
+vcf1<-Reg_SNPs_EUR[,id1]
+vcf2<-Reg_SNPs_EUR[,id2]
+vcf3<-Reg_SNPs_EUR[,id3]
+vcf4<-Reg_SNPs_EUR[,id4]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Four_sample_df_EUR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 4) %>% 
+  mutate(Region= "EUR")
+```
+
+
+#sites shared between 8 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:12, 8, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 8, byrow = TRUE))
+
+#Function to reorder rows from smEURest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datEURame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+
+vcf1<-Reg_SNPs_EUR[,id1]
+vcf2<-Reg_SNPs_EUR[,id2]
+vcf3<-Reg_SNPs_EUR[,id3]
+vcf4<-Reg_SNPs_EUR[,id4]
+vcf5<-Reg_SNPs_EUR[,id5]
+vcf6<-Reg_SNPs_EUR[,id6]
+vcf7<-Reg_SNPs_EUR[,id7]
+vcf8<-Reg_SNPs_EUR[,id8]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Eight_sample_df_EUR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 8) %>% 
+  mutate(Region= "EUR")
+```
+
+
+#All 12 EUR individuals!!
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 1 , ncol = 1))
+
+vcf_het <- subset(Reg_SNPs_EUR, apply(Reg_SNPs_EUR, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+# Store the result in the dataframe
+result_df[1,1] <- nrow(vcf_het)
+
+
+Twelve_sample_df_EUR<-result_df %>%
+  mutate(Sample_num= 12) %>% 
+  rename(Num_sites=V1) %>%
+  mutate(Region="EUR")
+```
+
+
+### Bind together and plot!! ###
+```{r}
+EUR_plot_data<-do.call(bind_rows, list(One_sample_df_EUR, Two_sample_df_EUR, Four_sample_df_EUR, Eight_sample_df_EUR, Twelve_sample_df_EUR))
+```
+
+#Save
+```{r}
+write.table(EUR_plot_data, "EURpops_hetsites_data.txt", row.names = F, quote=F)
+```
+
+
+```{r}
+ggplot(data=EUR_plot_data, aes(x=as.factor(Sample_num), y=Num_sites)) +
+  geom_boxplot()
+```
+
+###### AFRICAN SAMPLES ONLY ########
+
+
+```{r}
+AFR_samples <- c("HG03105_p2", 
+                 "HG03280_p1",  
+                  "HG03117_p2", 
+                  "NA19118_p2", 
+                  "NA19225_p2",
+                 "NA19385_p1", 
+                 "NA19332_p1",
+                 "HG03433_p1", 
+                 "HG03538_p1" , 
+                 "HG02646_p1",
+                "NA19041_p2", 
+                "NA19377_p2", 
+                "HG03078_p2")
+```
+
+#in one sample
+```{r}
+Reg_SNPs_AFR<-as.data.frame(Reg_SNPs[,AFR_samples])
+
+summary_list <- lapply(Reg_SNPs_AFR, table)
+
+AFRids<-do.call(rbind, summary_list)
+
+One_sample_df_AFR<-as.data.frame(AFRids) %>%
+  rename(Num_sites="0/1") %>%
+  select(Num_sites) %>%
+  mutate(Sample_num = 1)%>% 
+  mutate(Region= "AFR")
+```
+
+#sites shared between 2 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 2, replace = FALSE)
+  return(pair)
+}
+
+# Generate 1000 pairs of numbers
+pairs <- replicate(1000, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 2, byrow = TRUE))
+colnames(pairs_df) <- c("Number1", "Number2")
+subset_pairs<-subset(pairs_df, Number1 < Number2)
+unique_df <- subset_pairs[!duplicated(subset_pairs), ] 
+unique_100<-unique_df[1:78,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 78 , ncol = 1))
+
+for (i in 1:78) {
+
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+vcf1<-Reg_SNPs_AFR[,id1]
+vcf2<-Reg_SNPs_AFR[,id2]
+vcf_both<-cbind(vcf1, vcf2)
+
+vcf_het<-subset(vcf_both, (vcf1 == "1/1" & vcf2 == "0/0") | (vcf2 == "1/1" & vcf1 == "0/0" | (vcf1 == "0/1" | vcf2 == "0/1")))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+
+Two_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 2) %>% 
+  mutate(Region= "AFR")
+```
+
+
+#sites shared between 4 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 4, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 4, byrow = TRUE))
+
+#Function to reorder rows from smAFRest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAFRame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ]
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+
+vcf1<-Reg_SNPs_AFR[,id1]
+vcf2<-Reg_SNPs_AFR[,id2]
+vcf3<-Reg_SNPs_AFR[,id3]
+vcf4<-Reg_SNPs_AFR[,id4]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Four_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 4) %>% 
+  mutate(Region= "AFR")
+```
+
+
+#sites shared between 8 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 8, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 8, byrow = TRUE))
+
+#Function to reorder rows from smAFRest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAFRame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+
+vcf1<-Reg_SNPs_AFR[,id1]
+vcf2<-Reg_SNPs_AFR[,id2]
+vcf3<-Reg_SNPs_AFR[,id3]
+vcf4<-Reg_SNPs_AFR[,id4]
+vcf5<-Reg_SNPs_AFR[,id5]
+vcf6<-Reg_SNPs_AFR[,id6]
+vcf7<-Reg_SNPs_AFR[,id7]
+vcf8<-Reg_SNPs_AFR[,id8]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Eight_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 8) %>% 
+  mutate(Region= "AFR")
+```
+
+
+#sites shared between 12 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 12, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 12, byrow = TRUE))
+
+#Function to reorder rows from smAFRest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAFRame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:13,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 13 , ncol = 1))
+
+for (i in 1:13) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+id9<-unique_100[i,9]
+id10<-unique_100[i,10]
+id11<-unique_100[i,11]
+id12<-unique_100[i,12]
+
+vcf1<-Reg_SNPs_AFR[,id1]
+vcf2<-Reg_SNPs_AFR[,id2]
+vcf3<-Reg_SNPs_AFR[,id3]
+vcf4<-Reg_SNPs_AFR[,id4]
+vcf5<-Reg_SNPs_AFR[,id5]
+vcf6<-Reg_SNPs_AFR[,id6]
+vcf7<-Reg_SNPs_AFR[,id7]
+vcf8<-Reg_SNPs_AFR[,id8]
+vcf9<-Reg_SNPs_AFR[,id9]
+vcf10<-Reg_SNPs_AFR[,id10]
+vcf11<-Reg_SNPs_AFR[,id11]
+vcf12<-Reg_SNPs_AFR[,id12]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8, vcf9, vcf10, vcf11, vcf12)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Twelve_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 12) %>% 
+  mutate(Region= "AFR")
+```
+
+
+### Bind together and plot!! ###
+```{r}
+AFR_plot_data<-do.call(bind_rows, list(One_sample_df_AFR, Two_sample_df_AFR, Four_sample_df_AFR, Eight_sample_df_AFR, Twelve_sample_df_AFR))
+```
+
+#Save
+```{r}
+write.table(AFR_plot_data, "AFRpops_hetsites_data.txt", row.names = F, quote=F)
+```
+
+
+```{r}
+ggplot(data=AFR_plot_data, aes(x=as.factor(Sample_num), y=Num_sites)) +
+  geom_boxplot()
+```
+
+
+
+###################### Max number of MD sites with downsampling #######################
+
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+samplenames_1<-c("HG00101", "HG02224","HG03078", "HG03433", "NA07037","NA19041","NA19332", "NA19377", "NA20813")
+
+for (i in samplenames_1) {
+  
+  name<-paste(i,"_intersect",sep="")
+  assign(name, read.table(paste(i,"_ASEmashr_intersect.vcf", sep=""), fill=T) %>%
+           rename(chr=V11) %>%
+           rename(start=V12) %>%
+           rename(stop=V13) %>%
+           mutate(site=paste(chr,start,stop,sep="_")) %>%
+           select(site))
+}
+
+samplenames_2<-c("HG00171", "HG00178", "HG00181", "HG00274", "HG01504", "HG01678", "HG01776", "HG02646", "HG03105", "HG03117", "HG03280","HG03538", "NA19118", "NA19225", "NA19385", "NA20522")
+
+for (i in samplenames_2) {
+  
+  name<-paste(i,"_intersect",sep="")
+  assign(name, read.table(paste(i,"_ASEmashr_intersect.vcf", sep="")) %>%
+           rename(chr=V12) %>%
+           rename(start=V13) %>%
+           rename(stop=V14) %>%
+           mutate(site=paste(chr,start,stop,sep="_")) %>%
+           select(site))
+}
+
+```
+
+
+
+```{r}
+library(data.table)
+library(valr)
+library(tidyverse)
+```
+
+```{r}
+#joint genotyping vcf
+vcf<-fread("/nobackup/lea_lab/petersrm/mSTARR/Rcode/0002.vcf")
+vcf<-vcf[,-c(3:9)]
+vcf[] <- lapply(vcf, function(x) sub(":.*", "", x))
+vcf[] <- lapply(vcf, function(x) gsub("\\|", "/", x))
+
+#windows with regulatory activity
+MDsites<-read.table("/nobackup/lea_lab/petersrm/mSTARR/13Feb24_ASE_mashr_sigsites.bed")
+colnames(MDsites)<-c("chrom", "start", "end")
+
+#create SNP_site column (chr_site) in vcf and bed file
+vcf$SNPsite<-paste(vcf$"#CHROM", vcf$POS, sep="_")
+MDsites$SNPsite<-paste(MDsites$chrom, MDsites$end, sep="_")
+
+#filter vcf for MD sites
+MD_SNPs<-as.data.frame(subset(vcf, SNPsite %in% MDsites$SNPsite))
+```
+
+##########All populations###########
+
+### filter so there is one library per individual
+```{r}
+All_samples<-c("HG00101_p1", 
+                  "HG00171_p2",
+                 "HG00178_p1", 
+                 "HG00181_p2",
+                 "HG00274_p2",
+                  "HG01504_p2",
+                 "HG01678_p2",
+                  "HG01776_p2",
+                 "HG02224_p1", 
+                 "NA20522_p2",    
+                 "NA07037_p2",  
+                 "NA20813_p2",
+               "HG03105_p2", 
+                 "HG03280_p1",  
+                  "HG03117_p2", 
+                  "NA19118_p2", 
+                  "NA19225_p2",
+                 "NA19385_p1", 
+                 "NA19332_p1",
+                 "HG03433_p1", 
+                 "HG03538_p1" , 
+                 "HG02646_p1",
+                "NA19041_p2", 
+                "NA19377_p2", 
+                "HG03078_p2")
+```
+
+#in one sample
+```{r}
+MD_SNPs_all<-as.data.frame(MD_SNPs[,All_samples])
+
+summary_list <- lapply(MD_SNPs[,All_samples], table)
+
+allids<-do.call(rbind, summary_list)
+
+One_sample_df_All<-as.data.frame(allids) %>%
+  rename(Num_sites="0/1") %>%
+  select(Num_sites) %>%
+  mutate(Sample_num = 1)%>% 
+  mutate(Region= "All")
+```
+
+
+#sites shared between 2 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 2, replace = FALSE)
+  return(pair)
+}
+
+# Generate 100 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 2, byrow = TRUE))
+colnames(pairs_df) <- c("Number1", "Number2")
+subset_pairs<-subset(pairs_df, Number1 < Number2)
+unique_df <- subset_pairs[!duplicated(subset_pairs), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+vcf1<-MD_SNPs_all[,id1]
+vcf2<-MD_SNPs_all[,id2]
+vcf_both<-cbind(vcf1, vcf2)
+colnames(vcf_both)<-c("id1", "id2")
+
+vcf_het<-subset(vcf_both, (vcf1 == "1/1" & vcf2 == "0/0") | (vcf2 == "1/1" & vcf1 == "0/0" | (vcf1 == "0/1" | vcf2 == "0/1")))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Two_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 2) %>% 
+  mutate(Region= "All")
+```
+
+#sites shared between 4 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 4, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 4, byrow = TRUE))
+
+#Function to reorder rows from smallest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAllame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] #498 combos
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+  
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+
+vcf1<-MD_SNPs_all[,id1]
+vcf2<-MD_SNPs_all[,id2]
+vcf3<-MD_SNPs_all[,id3]
+vcf4<-MD_SNPs_all[,id4]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Four_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 4) %>% 
+  mutate(Region= "All")
+```
+
+
+#sites shared between 8 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 8, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 8, byrow = TRUE))
+
+#Function to reorder rows from smallest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAllame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+  
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+
+vcf1<-MD_SNPs_all[,id1]
+vcf2<-MD_SNPs_all[,id2]
+vcf3<-MD_SNPs_all[,id3]
+vcf4<-MD_SNPs_all[,id4]
+vcf5<-MD_SNPs_all[,id5]
+vcf6<-MD_SNPs_all[,id6]
+vcf7<-MD_SNPs_all[,id7]
+vcf8<-MD_SNPs_all[,id8]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Eight_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 8) %>% 
+  mutate(Region= "All")
+```
+
+
+
+#sites shared between 12 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:25, 12, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 12, byrow = TRUE))
+
+#Function to reorder rows from smallest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAllame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] #498 combos
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+id9<-unique_100[i,9]
+id10<-unique_100[i,10]
+id11<-unique_100[i,11]
+id12<-unique_100[i,12]
+
+vcf1<-MD_SNPs_all[,id1]
+vcf2<-MD_SNPs_all[,id2]
+vcf3<-MD_SNPs_all[,id3]
+vcf4<-MD_SNPs_all[,id4]
+vcf5<-MD_SNPs_all[,id5]
+vcf6<-MD_SNPs_all[,id6]
+vcf7<-MD_SNPs_all[,id7]
+vcf8<-MD_SNPs_all[,id8]
+vcf9<-MD_SNPs_all[,id9]
+vcf10<-MD_SNPs_all[,id10]
+vcf11<-MD_SNPs_all[,id11]
+vcf12<-MD_SNPs_all[,id12]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8, vcf9, vcf10, vcf11, vcf12)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Twelve_sample_df_All<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 12) %>% 
+  mutate(Region= "All")
+```
+
+
+### Bind together and plot!! ###
+```{r}
+All_plot_data<-do.call(bind_rows, list(One_sample_df_All, Two_sample_df_All, Four_sample_df_All, Eight_sample_df_All, Twelve_sample_df_All))
+```
+
+#plot
+```{r}
+Max_values <-All_plot_data %>%
+  dplyr::group_by(Region, Sample_num) %>%
+  dplyr::summarize(max=max(Num_sites))
+
+Maxplot<-ggplot(Max_values, aes(x=as.factor(Sample_num), y=max)) +
+  geom_line() +
+  geom_point() + 
+  ylab("Maximum # of MD genetic effect sites") +
+  xlab("Multiplex #") +
+  theme_light();Maxplot
+```
+
+#Save
+```{r}
+write.table(All_plot_data, "All_multiplexing_data.txt", row.names = F, quote=F)
+```
+
+
+###### EUROPEAN SAMPLES ONLY ########
+
+```{r}
+EUR_samples <- c("HG00101_p1", 
+                  "HG00171_p2",
+                 "HG00178_p1", 
+                 "HG00181_p2",
+                 "HG00274_p2",
+                  "HG01504_p2",
+                 "HG01678_p2",
+                  "HG01776_p2",
+                 "HG02224_p1", 
+                 "NA20522_p2",    
+                 "NA07037_p2",  
+                 "NA20813_p2")
+```
+
+
+
+
+#in one sample
+```{r}
+MD_SNPs_EUR<-as.data.frame(MD_SNPs[,EUR_samples])
+
+summary_list <- lapply(MD_SNPs[,EUR_samples], table)
+
+EURids<-do.call(rbind, summary_list)
+
+One_sample_df_EUR<-as.data.frame(EURids) %>%
+  rename(Num_sites="0/1") %>%
+  select(Num_sites) %>%
+  mutate(Sample_num = 1)%>% 
+  mutate(Region= "EUR")
+```
+
+
+#sites shared between 2 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:12, 2, replace = FALSE)
+  return(pair)
+}
+
+# Generate 1000 pairs of numbers
+pairs <- replicate(1000, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 2, byrow = TRUE))
+colnames(pairs_df) <- c("Number1", "Number2")
+subset_pairs<-subset(pairs_df, Number1 < Number2)
+unique_df <- subset_pairs[!duplicated(subset_pairs), ] 
+unique_100<-unique_df[1:66,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 66 , ncol = 1))
+
+for (i in 1:66) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+vcf1<-MD_SNPs_EUR[,id1]
+vcf2<-MD_SNPs_EUR[,id2]
+vcf_both<-cbind(vcf1, vcf2)
+
+vcf_het<-subset(vcf_both, (vcf1 == "1/1" & vcf2 == "0/0") | (vcf2 == "1/1" & vcf1 == "0/0" | (vcf1 == "0/1" | vcf2 == "0/1")))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Two_sample_df_EUR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 2) %>% 
+  mutate(Region= "EUR")
+```
+
+#sites shared between 4 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:12, 4, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 4, byrow = TRUE))
+
+#Function to reorder rows from smEURest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datEURame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+  
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+
+vcf1<-MD_SNPs_EUR[,id1]
+vcf2<-MD_SNPs_EUR[,id2]
+vcf3<-MD_SNPs_EUR[,id3]
+vcf4<-MD_SNPs_EUR[,id4]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Four_sample_df_EUR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 4) %>% 
+  mutate(Region= "EUR")
+```
+
+
+#sites shared between 8 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:12, 8, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 8, byrow = TRUE))
+
+#Function to reorder rows from smEURest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datEURame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+  
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+
+vcf1<-MD_SNPs_EUR[,id1]
+vcf2<-MD_SNPs_EUR[,id2]
+vcf3<-MD_SNPs_EUR[,id3]
+vcf4<-MD_SNPs_EUR[,id4]
+vcf5<-MD_SNPs_EUR[,id5]
+vcf6<-MD_SNPs_EUR[,id6]
+vcf7<-MD_SNPs_EUR[,id7]
+vcf8<-MD_SNPs_EUR[,id8]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Eight_sample_df_EUR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 8) %>% 
+  mutate(Region= "EUR")
+```
+
+#All 12 EUR individuals!!
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 1 , ncol = 1))
+
+vcf_het <- subset(MD_SNPs_EUR, apply(MD_SNPs_EUR, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+# Store the result in the dataframe
+result_df[1,1] <- nrow(vcf_het)
+
+
+Twelve_sample_df_EUR<-result_df %>%
+  mutate(Sample_num= 12) %>% 
+  rename(Num_sites=V1) %>%
+  mutate(Region="EUR")
+```
+
+
+### Bind together and plot!! ###
+```{r}
+EUR_plot_data<-do.call(bind_rows, list(One_sample_df_EUR, Two_sample_df_EUR, Four_sample_df_EUR, Eight_sample_df_EUR, Twelve_sample_df_EUR))
+```
+
+#Save
+```{r}
+write.table(EUR_plot_data, "EUR_multiplexing_data.txt", row.names = F, quote=F)
+```
+
+
+
+
+###### AFRICAN SAMPLES ONLY ########
+
+```{r}
+AFR_samples <- c("HG03105_p2", 
+                 "HG03280_p1",  
+                  "HG03117_p2", 
+                  "NA19118_p2", 
+                  "NA19225_p2",
+                 "NA19385_p1", 
+                 "NA19332_p1",
+                 "HG03433_p1", 
+                 "HG03538_p1" , 
+                 "HG02646_p1",
+                "NA19041_p2", 
+                "NA19377_p2", 
+                "HG03078_p2")
+```
+
+
+#in one sample
+```{r}
+MD_SNPs_AFR<-as.data.frame(MD_SNPs[,AFR_samples])
+
+summary_list <- lapply(MD_SNPs[,AFR_samples], table)
+
+AFRids<-do.call(rbind, summary_list)
+
+One_sample_df_AFR<-as.data.frame(AFRids) %>%
+  rename(Num_sites="0/1") %>%
+  select(Num_sites) %>%
+  mutate(Sample_num = 1)%>% 
+  mutate(Region= "AFR")
+```
+
+
+#sites shared between 2 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 2, replace = FALSE)
+  return(pair)
+}
+
+# Generate 100 pairs of numbers
+pairs <- replicate(1000, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 2, byrow = TRUE))
+colnames(pairs_df) <- c("Number1", "Number2")
+subset_pairs<-subset(pairs_df, Number1 < Number2)
+unique_df <- subset_pairs[!duplicated(subset_pairs), ] 
+unique_100<-unique_df[1:78,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 78 , ncol = 1))
+
+for (i in 1:78) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+vcf1<-MD_SNPs_AFR[,id1]
+vcf2<-MD_SNPs_AFR[,id2]
+vcf_both<-cbind(vcf1, vcf2)
+
+vcf_het<-subset(vcf_both, (vcf1 == "1/1" & vcf2 == "0/0") | (vcf2 == "1/1" & vcf1 == "0/0" | (vcf1 == "0/1" | vcf2 == "0/1")))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Two_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 2) %>% 
+  mutate(Region= "AFR")
+```
+
+#sites shared between 4 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 4, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 4, byrow = TRUE))
+
+#Function to reorder rows from smAFRest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAFRame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+  
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+
+vcf1<-MD_SNPs_AFR[,id1]
+vcf2<-MD_SNPs_AFR[,id2]
+vcf3<-MD_SNPs_AFR[,id3]
+vcf4<-MD_SNPs_AFR[,id4]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Four_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 4) %>% 
+  mutate(Region= "AFR")
+```
+
+
+#sites shared between 8 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 8, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 8, byrow = TRUE))
+
+#Function to reorder rows from smAFRest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAFRame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:100,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 100 , ncol = 1))
+
+for (i in 1:100) {
+  
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+
+vcf1<-MD_SNPs_AFR[,id1]
+vcf2<-MD_SNPs_AFR[,id2]
+vcf3<-MD_SNPs_AFR[,id3]
+vcf4<-MD_SNPs_AFR[,id4]
+vcf5<-MD_SNPs_AFR[,id5]
+vcf6<-MD_SNPs_AFR[,id6]
+vcf7<-MD_SNPs_AFR[,id7]
+vcf8<-MD_SNPs_AFR[,id8]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Eight_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 8) %>% 
+  mutate(Region= "AFR")
+```
+
+#sites shared between 12 samples
+```{r}
+generate_pairs <- function() {
+  pair <- sample(1:13, 12, replace = FALSE)
+  return(pair)
+}
+
+# Generate 500 pairs of numbers
+pairs <- replicate(500, generate_pairs())
+
+# Convert pairs to a data frame
+pairs_df <- as.data.frame(matrix(unlist(pairs), ncol = 12, byrow = TRUE))
+
+#Function to reorder rows from smAFRest to largest
+reorder_row <- function(row) {
+  sorted_row <- sort(row)
+  return(sorted_row)
+}
+
+# Apply the function to each row
+df_reordered <- t(apply(pairs_df, 1, reorder_row))
+
+# Convert the result back to a datAFRame
+df_reordered <- as.data.frame(df_reordered)
+
+#Unique rows
+unique_df <- df_reordered[!duplicated(df_reordered), ] 
+unique_100<-unique_df[1:13,]
+```
+
+```{r}
+result_df<-as.data.frame(matrix(NA, nrow = 13 , ncol = 1))
+
+for (i in 1:13) {
+
+id1<-unique_100[i,1]
+id2<-unique_100[i,2]
+id3<-unique_100[i,3]
+id4<-unique_100[i,4]
+id5<-unique_100[i,5]
+id6<-unique_100[i,6]
+id7<-unique_100[i,7]
+id8<-unique_100[i,8]
+id9<-unique_100[i,9]
+id10<-unique_100[i,10]
+id11<-unique_100[i,11]
+id12<-unique_100[i,12]
+
+vcf1<-MD_SNPs_AFR[,id1]
+vcf2<-MD_SNPs_AFR[,id2]
+vcf3<-MD_SNPs_AFR[,id3]
+vcf4<-MD_SNPs_AFR[,id4]
+vcf5<-MD_SNPs_AFR[,id5]
+vcf6<-MD_SNPs_AFR[,id6]
+vcf7<-MD_SNPs_AFR[,id7]
+vcf8<-MD_SNPs_AFR[,id8]
+vcf9<-MD_SNPs_AFR[,id9]
+vcf10<-MD_SNPs_AFR[,id10]
+vcf11<-MD_SNPs_AFR[,id11]
+vcf12<-MD_SNPs_AFR[,id12]
+
+vcf_both<-cbind(vcf1, vcf2, vcf3, vcf4, vcf5, vcf6, vcf7, vcf8, vcf9, vcf10, vcf11, vcf12)
+
+vcf_het <- subset(vcf_both, apply(vcf_both, 1, function(row) { any(row== "0/1") | 
+  (any(row == "0/0") && any(row == "1/1"))
+}))
+
+ result_df[i, ] <- nrow(vcf_het)
+}
+
+Twelve_sample_df_AFR<-result_df %>%
+  rename(Num_sites=V1) %>%
+  mutate(Sample_num= 12) %>% 
+  mutate(Region= "AFR")
+```
+
+
+### Bind together and plot!! ###
+```{r}
+AFR_plot_data<-do.call(bind_rows, list(One_sample_df_AFR, Two_sample_df_AFR, Four_sample_df_AFR, Eight_sample_df_AFR, Twelve_sample_df_AFR))
+```
+
+#Save
+```{r}
+write.table(AFR_plot_data, "AFR_multiplexing_data.txt", row.names = F, quote=F)
+```
+
+#Plot eur, afr,and all
+```{r}
+All_plot_data<-read.table("All_multiplexing_data.txt", h=T)
+AFR_plot_data<-read.table("AFR_multiplexing_data.txt", h=T)
+EUR_plot_data<-read.table("EUR_multiplexing_data.txt", h=T)
+```
+
+```{r}
+AFR_EUR_plot<-bind_rows(AFR_plot_data, EUR_plot_data)
+AFR_EUR_ALL_plot<-bind_rows(AFR_EUR_plot, All_plot_data)
+```
+
+#Plot maximum
+```{r}
+Max_values <-AFR_EUR_ALL_plot %>%
+  dplyr::group_by(Region, Sample_num) %>%
+  dplyr::summarize(max=max(Num_sites))
+
+Max_values$Region <- factor(Max_values$Region, levels = c("EUR", "AFR", "All"))
+
+Maxplot<-ggplot(Max_values, aes(x=as.factor(Sample_num), y=max, color=Region, group=Region)) +
+  geom_line() +
+  geom_point() + 
+  ylab("Maximum # of MD genetic effect sites") +
+  xlab("Multiplex #") +
+  theme_light();Maxplot
+
+#ggsave("Max_MD_sites.pdf", Maxplot)
+```
+
+
+
+
+
+
+
+
