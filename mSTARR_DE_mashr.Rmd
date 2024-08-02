@@ -1,0 +1,171 @@
+---
+title: "mSTARR_MDreg_analysis"
+output: html_document
+date: "2024-08-01"
+---
+
+```{r}
+library(limma)
+library(edgeR)
+library(statmod)
+library(qvalue)
+library(tidyverse)
+library(ashr)
+library(mashr)
+library(data.table)
+```
+
+###################################
+Model 1 
+###################################
+
+
+# split methylated and unmethylated replicates up into two separate datasets
+```{r}
+all<-read.delim('rnadnacounts_400bpwin.txt')
+info<-read.delim('replicateinfo.txt')
+```
+
+```{r}
+Methinfo<- subset(info, Meth=="meth")
+Methreps<- Methinfo$Replicate
+Unmethinfo<- subset(info, Meth=="unmeth")
+Unmethreps<- Unmethinfo$Replicate
+Methcounts<-all[, which(colnames(all) %in% Methreps)]
+Unmethcounts<-all[, which(colnames(all) %in% Unmethreps)]
+```
+
+#model methylated replicates
+```{r}
+type <-Methinfo$Sample_type
+pool <-Methinfo$Pool
+design1<-model.matrix(~pool + type)
+dge <- DGEList(counts=(Methcounts))
+dge1 <- calcNormFactors(dge)
+```
+
+```{r}
+v_methonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
+write.table(v_methonly$E,'normcounts_methonly.txt',row.names=F,sep='\t',quote=F)
+```
+
+```{r}
+fit <-lmFit(v_methonly,design1)
+fit_dna <- eBayes(fit)
+se.coef <- sqrt(fit_dna$s2.post) * fit_dna$stdev.unscaled
+fit_dna_df <- as.data.frame(cbind(fit_dna$p.value[,3],fit_dna$coefficient[,3],se.coef[,3]))
+colnames(fit_dna_df)<-c('pval_meth','beta_meth','se_meth')
+fit_dna_df$id<-1:dim(all)[1]
+fit_dna_df$q_meth<-qvalue(fit_dna_df[,1])$qvalues
+fit_dna_keep01<-subset(fit_dna_df,(q_meth<0.01 & beta_meth>0))
+dim(fit_dna_keep01) #q<0.01: 2513 regulatory windows
+dim(fit_dna_df) #525074 total windows analyzed
+nrow(fit_dna_keep01)/nrow(fit_dna_df) #0.48%
+fit_dna_df$info<-'not_regulatory'
+fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
+write.table(fit_dna_df,'model1_methonly.txt',row.names=T,sep='\t',quote=F)
+```
+
+#unmethylated replicates only
+```{r}
+type <-Unmethinfo$Sample_type
+pool <-Unmethinfo$Pool
+design1<-model.matrix(~pool + type)
+dge <- DGEList(counts=(Unmethcounts))
+dge1 <- calcNormFactors(dge)
+```
+
+```{r}
+v_unmethonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
+write.table(v_unmethonly$E,'normcounts_unmethonly.txt',row.names=F,sep='\t',quote=F)
+```
+
+```{r}
+fit <-lmFit(v_unmethonly,design1)
+fit_dna <- eBayes(fit)
+se.coef <- sqrt(fit_dna$s2.post) * fit_dna$stdev.unscaled
+fit_dna_df <- as.data.frame(cbind(fit_dna$p.value[,3],fit_dna$coefficient[,3],se.coef[,3]))
+colnames(fit_dna_df)<-c('pval_unmeth','beta_unmeth','se_unmeth')
+fit_dna_df$id<-1:dim(all)[1]
+fit_dna_df$q_unmeth<-qvalue(fit_dna_df[,1])$qvalues
+fit_dna_keep01<-subset(fit_dna_df,(q_unmeth<0.01 & beta_unmeth>0))
+dim(fit_dna_keep01) #6221 regulatory windows
+dim(fit_dna_df) #525074 total windows analyzed
+nrow(fit_dna_keep01)/nrow(fit_dna_df) #1.2%
+fit_dna_df$info<-'not_regulatory'
+fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
+write.table(fit_dna_df,'model1_unmethonly.txt',row.names=T,sep='\t',quote=F)
+```
+
+###################################
+Model 2- MASHR 
+###################################
+
+```{r}
+methresults=read.table('model1_methonly.txt', row.names=1)
+unmethresults=read.table('model1_unmethonly.txt', row.names=1)
+```
+
+```{r}
+# setup mashR
+coef=as.data.frame(cbind(methresults$beta_meth,unmethresults$beta_unmeth))
+rownames(coef)<- rownames(methresults)
+
+se=as.data.frame(cbind(methresults$se_meth,unmethresults$se_unmeth))
+rownames(se)<- rownames(methresults)
+
+#make subset of strong sites and subset of random sites
+
+#strong sites= sites found to be regulatory in either methylated or unmethylated condition (6,957 sites)
+tmp1<-unique(c(subset(methresults,info=='regulatory')$id,subset(unmethresults,info=='regulatory')$id))
+
+#make mashr dataset
+data.strong = mash_set_data(as.matrix(coef[tmp1,]), as.matrix(se[tmp1,]))
+strong.site.locations <- methresults[tmp1,]
+
+# random sites
+set.seed(1)
+tmp2<-sample(1:dim(methresults)[1],20000)
+data.rand = mash_set_data(as.matrix(coef[tmp2,]), as.matrix(se[tmp2,]))
+
+# run mashR
+# https://stephenslab.github.io/mashr/articles/intro_correlations.html
+V.simple = estimate_null_correlation_simple(data.rand)
+data.rand.cor = mash_update_data(data.rand, V=V.simple)
+data.strong.cor = mash_update_data(data.strong, V=V.simple)
+
+# https://stephenslab.github.io/mashr/articles/intro_mash_dd.html
+U.pca = cov_pca(data.strong.cor,2)
+U.ed = cov_ed(data.strong.cor, U.pca)
+U.c = cov_canonical(data.rand.cor)
+m = mash(data.rand.cor, Ulist = c(U.ed,U.c), outputlevel = 1)
+#applying model generated from random data to the strong dataset
+m2 = mash(data.strong.cor, g=get_fitted_g(m), fixg=TRUE)
+
+lfsr=get_lfsr(m2)
+pm=get_pm(m2)
+lfsr$id<-1:dim(lfsr)[1]
+pm$id<-1:dim(pm)[1]
+
+names(lfsr)<-names(pm)<-c('meth','unmeth','id')
+
+#calculate logFC between conditions
+lfsr$log2<-pm$unmeth-pm$meth
+
+#add info on window location for each site
+lfsr$windows<- rownames(strong.site.locations)
+pm$windows<- rownames(strong.site.locations)
+
+#regulatory activity in at least one condition, log fold change of >1.5 between conditions
+tmp1<-subset(lfsr,(meth<0.05 | unmeth<0.05) & (log2< -0.58 | log2>0.58)); dim(tmp1) #4052 have MD activity
+
+dim(tmp1)[1]/dim( subset(lfsr,(meth<0.05 | unmeth<0.05) ))[1] # md 58.2% of sig sites
+
+length(which(pm$unmeth[tmp1$id]-pm$meth[tmp1$id] >0))/dim(tmp1)[1] #84.8% have higher activity in unmethylated condition
+
+lfsr_results<-lfsr %>%
+  mutate(info= ifelse(((meth<0.05 | unmeth<0.05) & (log2< -0.58 | log2>0.58)), "MD", "not_MD"))
+
+write.table(lfsr_results,"mod2_mashr_results.txt")
+```
+
