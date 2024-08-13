@@ -1,0 +1,311 @@
+---
+title: "Comparison_to_prior_studies"
+output: html_document
+date: "2024-08-13"
+---
+
+#####################################################
+Reanalyze Lea et al. 2018 results using new pipelie
+#####################################################
+
+
+# count data can be found here: 
+
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+eLife<- read.delim('7Dec22_mSTARR_counts_AJL_K562.txt')
+methylated_counts<-eLife[,c(14:23)]
+```
+
+#methylated replicates only
+```{r}
+type <-c("DNA", "DNA", "DNA", "DNA", "DNA", "RNA", "RNA", "RNA", "RNA", "RNA")
+design1<-model.matrix(~type)
+dge <- DGEList(counts=(methylated_counts))
+dge1 <- calcNormFactors(dge)
+```
+
+```{r}
+v_methonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
+```
+
+```{r}
+fit <-lmFit(v_methonly,design1)
+fit_dna <- eBayes(fit)
+se.coef <- sqrt(fit_dna$s2.post) * fit_dna$stdev.unscaled
+fit_dna_df <- as.data.frame(cbind(fit_dna$p.value[,2],fit_dna$coefficient[,2],se.coef[,2]))
+colnames(fit_dna_df)<-c('pval_meth','beta_meth','se_meth')
+fit_dna_df$id<-1:dim(fit_dna_df)[1]
+fit_dna_df$q_meth<-qvalue(fit_dna_df[,1])$qvalues
+fit_dna_keep01<-subset(fit_dna_df,(q_meth<0.01 & beta_meth>0))
+dim(fit_dna_keep01) #1031 regulatory windows
+dim(fit_dna_df) #756814 total windows analyzed
+nrow(fit_dna_keep01)/nrow(fit_dna_df) #0.14%
+fit_dna_df$info<-'not_regulatory'
+fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
+fit_dna_df$site<-eLife$site
+write.table(fit_dna_df,'AJL_eLife_methonly.txt',row.names=T,sep='\t',quote=F)
+```
+
+#unmethylated replicates only
+```{r}
+unmethylated_counts<-eLife[,c(2:13)]
+```
+
+```{r}
+type <-c("DNA", "DNA", "DNA", "DNA", "DNA", "DNA", "RNA", "RNA", "RNA", "RNA", "RNA", "RNA")
+design1<-model.matrix(~type)
+dge <- DGEList(counts=(unmethylated_counts))
+dge1 <- calcNormFactors(dge)
+```
+
+```{r}
+v_unmethonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
+```
+
+```{r}
+fit <-lmFit(v_unmethonly,design1)
+fit_dna <- eBayes(fit)
+se.coef <- sqrt(fit_dna$s2.post) * fit_dna$stdev.unscaled
+fit_dna_df <- as.data.frame(cbind(fit_dna$p.value[,2],fit_dna$coefficient[,2],se.coef[,2]))
+colnames(fit_dna_df)<-c('pval_unmeth','beta_unmeth','se_unmeth')
+fit_dna_df$id<-1:dim(fit_dna_df)[1]
+fit_dna_df$q_unmeth<-qvalue(fit_dna_df[,1])$qvalues
+fit_dna_keep01<-subset(fit_dna_df,(q_unmeth<0.01 & beta_unmeth>0))
+dim(fit_dna_keep01) #5891 regulatory windows
+dim(fit_dna_df) #756814 total windows analyzed
+nrow(fit_dna_keep01)/nrow(fit_dna_df) #0.78%
+fit_dna_df$info<-'not_regulatory'
+fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
+fit_dna_df$site<-eLife$site
+write.table(fit_dna_df,'AJL_eLife_unmethonly.txt',row.names=T,sep='\t',quote=F)
+```
+
+#What percent of tested windows are regulatory?
+```{r}
+eLife_unmeth<-read.table('AJL_eLife_unmethonly.txt')
+eLife_meth<-read.table('AJL_eLife_methonly.txt')
+
+dim(eLife_meth) #756814
+eLife_meth_reg<-subset(eLife_meth, info == "regulatory"); dim(eLife_meth_reg) #1031
+#1031/756814
+
+dim(eLife_unmeth) #756814
+eLife_unmeth_reg<-subset(eLife_unmeth, info == "regulatory"); dim(eLife_unmeth_reg) #5891
+#5891/756814
+```
+
+
+# Are results similar for windows measured in Lea et al. 2018 and the current study?
+
+```{r}
+MethModel<-read.delim('model1_methonly_results.txt')
+UnmethModel <- read.delim('model1_unmethonly_results.txt')
+```
+
+```{r}
+MethModsites <- rownames(MethModel)
+MethModstartsites<- sub('^([^_]+_[^_]+).*', '\\1', MethModsites)
+MethModel$site <- MethModstartsites
+
+MethModel_eLife <- merge(MethModel, eLife_meth, by="site") %>%
+  na.omit(); dim(MethModel_eLife) #211,837 sites tested for MD activity in both datasets
+
+UnmethModsites <- rownames(UnmethModel)
+UnmethModstartsites<- sub('^([^_]+_[^_]+).*', '\\1', UnmethModsites)
+UnmethModel$site <- UnmethModstartsites
+
+UnmethModel_eLife <- merge(UnmethModel, eLife_unmeth, by="site") %>%
+  na.omit(); dim(UnmethModel_eLife) #211,837 sites tested for MD activity in both datasets
+```
+
+#fischers exact test to see if more likely to call enhancers on the same regions than would be expected by chance.
+
+```{r}
+fisher.test(table(MethModel_eLife$info.x, MethModel_eLife$info.y))
+#odds ratio= 79.65 for methylated sites
+
+fisher.test(table(UnmethModel_eLife$info.x, UnmethModel_eLife$info.y))
+#odds ratio= 54.86 for unmethylated sites
+```
+
+#correlation in effect sizes for windows in common
+```{r}
+# all windows in common- methylated
+cor.test(MethModel_eLife$beta_meth.x, MethModel_eLife$beta_meth.y) #R=0.18
+
+# windows that are regulatory in current study - methylated
+MethCommonSites_sig <- MethModel_eLife %>%
+  filter(info.x == "regulatory") #700 of our regulatory windows are in Lea et al. 2018 dataset
+cor.test(MethCommonSites_sig$beta_meth.x, MethCommonSites_sig$beta_meth.y) #R=0.57
+
+# all windows in common- unmethylated
+cor.test(UnmethModel_eLife$beta_unmeth.x, UnmethModel_eLife$beta_unmeth.y) #R=0.32 
+
+# windows that are regulatory in current study - unmethylated
+UnmethCommonSites_sig <- UnmethModel_eLife %>%
+  filter(info.x == "regulatory") #2520 of our regulatory windows are in Lea et al. 2018 dataset
+cor.test(UnmethCommonSites_sig$beta_unmeth.x, UnmethCommonSites_sig$beta_unmeth.y) #R=0.60
+```
+
+
+
+#########################################################
+Reanalyze Johnston et al. 2024 results using new pipelie
+#########################################################
+
+count data can be found here:
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+RAJ<- read.table('7Dec22_mSTARR_counts_RAJ_K562.txt', h=T)
+
+methylated<-c("L31223", "L31224", "L31225" ,"L31232", "L31233", "L31234", "L31259", "L31260", "L31261", "L31268", "L31269","L31270")
+
+unmethylated<-c("L31241", "L31242", "L31243","L31250", "L31251", "L31252", "L31277", "L31278", "L31279", "L31286", "L31287", "L31288")
+```
+
+#unmethylated replicates only
+```{r}
+unmethylated_counts<-(RAJ[,unmethylated])
+```
+
+```{r}
+type <-c("RNA", "RNA", "RNA", "RNA", "RNA", "RNA", "DNA", "DNA", "DNA", "DNA", "DNA", "DNA")
+design1<-model.matrix(~type)
+dge <- DGEList(counts=unmethylated_counts)
+dge1 <- calcNormFactors(dge)
+```
+
+```{r}
+v_unmethonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
+```
+
+```{r}
+fit <-lmFit(v_unmethonly,design1)
+fit_dna <- eBayes(fit)
+se.coef <- sqrt(fit_dna$s2.post) * fit_dna$stdev.unscaled
+fit_dna_df <- as.data.frame(cbind(fit_dna$p.value[,2],fit_dna$coefficient[,2],se.coef[,2]))
+colnames(fit_dna_df)<-c('pval_unmeth','beta_unmeth','se_unmeth')
+fit_dna_df$id<-1:dim(fit_dna_df)[1]
+fit_dna_df$q_unmeth<-qvalue(fit_dna_df[,1])$qvalues
+fit_dna_keep01<-subset(fit_dna_df,(q_unmeth<0.01 & beta_unmeth>0))
+dim(fit_dna_keep01) #9648 regulatory windows
+dim(fit_dna_df) #497815 total windows analyzed
+nrow(fit_dna_keep01)/nrow(fit_dna_df) #1.9%
+fit_dna_df$info<-'not_regulatory'
+fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
+fit_dna_df$site<-RAJ$site
+write.table(fit_dna_df,'RAJ_eLife_unmethonly.txt',row.names=T,sep='\t',quote=F)
+```
+
+
+#methylated replicates only
+```{r}
+methylated_counts<-(RAJ[,methylated])
+```
+
+```{r}
+type <-c("RNA", "RNA", "RNA", "RNA", "RNA", "RNA", "DNA", "DNA", "DNA", "DNA", "DNA", "DNA")
+design1<-model.matrix(~type)
+dge <- DGEList(counts=methylated_counts)
+dge1 <- calcNormFactors(dge)
+```
+
+```{r}
+v_methonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
+```
+
+```{r}
+fit <-lmFit(v_methonly,design1)
+fit_dna <- eBayes(fit)
+se.coef <- sqrt(fit_dna$s2.post) * fit_dna$stdev.unscaled
+fit_dna_df <- as.data.frame(cbind(fit_dna$p.value[,2],fit_dna$coefficient[,2],se.coef[,2]))
+colnames(fit_dna_df)<-c('pval_meth','beta_meth','se_meth')
+fit_dna_df$id<-1:dim(fit_dna_df)[1]
+fit_dna_df$q_meth<-qvalue(fit_dna_df[,1])$qvalues
+fit_dna_keep01<-subset(fit_dna_df,(q_meth<0.01 & beta_meth>0))
+dim(fit_dna_keep01) #8533 regulatory windows
+dim(fit_dna_df) #497815 total windows analyzed
+nrow(fit_dna_keep01)/nrow(fit_dna_df) #1.7%
+fit_dna_df$info<-'not_regulatory'
+fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
+fit_dna_df$site<-RAJ$site
+write.table(fit_dna_df,'RAJ_eLife_methonly.txt',row.names=T,sep='\t',quote=F)
+```
+
+
+#what percent of tested windows are regulatory?
+```{r}
+RAJ_meth<-read.table('RAJ_eLife_methonly.txt', h=T)
+RAJ_unmeth<-read.table('RAJ_eLife_unmethonly.txt', h=T)
+
+dim(RAJ_meth) #497,815 windows tested
+RAJ_meth_reg<-subset(RAJ_meth, info == "regulatory") #8,533 regulatory. 
+#8533/497815
+
+dim(RAJ_unmeth) #497,815 windows tested
+RAJ_unmeth_reg<-subset(RAJ_unmeth, info == "regulatory"); dim(RAJ_unmeth_reg) #9,648 regulatory. 
+
+```
+
+
+# are the results similar?
+```{r}
+MethModel<-read.delim('model1_methonly_results.txt')
+UnmethModel <- read.delim('model1_unmethonly_results.txt')
+
+MethModsites <- rownames(MethModel)
+MethModstartsites<- sub('^([^_]+_[^_]+).*', '\\1', MethModsites)
+MethModel$site <- MethModstartsites
+
+MethCommonWindows <- merge(MethModel, RAJ_meth, by="site"); dim(MethCommonWindows)
+#135,595 sites in common
+
+UnmethModsites <- rownames(UnmethModel)
+UnmethModstartsites<- sub('^([^_]+_[^_]+).*', '\\1', UnmethModsites)
+UnmethModel$site <- UnmethModstartsites
+
+UnmethCommonWindows <- merge(UnmethModel, RAJ_unmeth, by="site"); dim(UnmethCommonWindows)
+#135,595 sites in common
+```
+
+
+#fischers exact test to see if more likely to call enhancers on the same regions than would be expected by chance.
+```{r}
+fisher.test(table(MethCommonWindows$info.x, MethCommonWindows$info.y)) #odds ratio 26.3
+
+fisher.test(table(UnmethCommonWindows$info.x, UnmethCommonWindows$info.y)) #odds ratio 23.3
+```
+
+#correlation in effect sizes for windows in common
+```{r}
+# all windows- methylated
+cor.test(MethCommonWindows$beta_meth.x, MethCommonWindows$beta_meth.y) #R=0.10 
+
+# windows significant in current study- methylated
+MethCommonWindows_sig <- MethCommonWindows %>%
+  filter(info.x == "regulatory") #427 of our regulatory windows are in RAJ dataset
+
+cor.test(MethCommonWindows_sig$beta_meth.x, MethCommonWindows_sig$beta_meth.y) #R= 0.48 
+
+
+# all windows- unmethylated
+cor.test(UnmethCommonWindows$beta_unmeth.x, UnmethCommonWindows$beta_unmeth.y) #R=0.10 << all windows
+
+# windows significant in current study- unmethylated
+UnmethCommonWindows_sig <- UnmethCommonWindows %>%
+  filter(info.x == "regulatory") #Only 1,770 of our regulatory windows are in RAJ dataset
+
+cor.test(UnmethCommonWindows_sig$beta_unmeth.x, UnmethCommonWindows_sig$beta_unmeth.y) #R= 0.58
+```
+
+
