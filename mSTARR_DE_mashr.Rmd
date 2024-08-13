@@ -16,11 +16,11 @@ library(data.table)
 ```
 
 ###################################
-Model 1 
+Model 1 - DE analysis DNA v RNA
 ###################################
 
 
-# split methylated and unmethylated replicates up into two separate datasets
+## split methylated and unmethylated replicates up into two separate datasets ##
 ```{r}
 all<-read.delim('rnadnacounts_400bpwin.txt')
 info<-read.delim('replicateinfo.txt')
@@ -35,7 +35,7 @@ Methcounts<-all[, which(colnames(all) %in% Methreps)]
 Unmethcounts<-all[, which(colnames(all) %in% Unmethreps)]
 ```
 
-#model methylated replicates
+## model methylated replicates ##
 ```{r}
 type <-Methinfo$Sample_type
 pool <-Methinfo$Pool
@@ -46,7 +46,6 @@ dge1 <- calcNormFactors(dge)
 
 ```{r}
 v_methonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
-write.table(v_methonly$E,'normcounts_methonly.txt',row.names=F,sep='\t',quote=F)
 ```
 
 ```{r}
@@ -63,10 +62,10 @@ dim(fit_dna_df) #525074 total windows analyzed
 nrow(fit_dna_keep01)/nrow(fit_dna_df) #0.48%
 fit_dna_df$info<-'not_regulatory'
 fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
-write.table(fit_dna_df,'model1_methonly.txt',row.names=T,sep='\t',quote=F)
+write.table(fit_dna_df,'model1_methonly_results.txt',row.names=T,sep='\t',quote=F)
 ```
 
-#unmethylated replicates only
+## model unmethylated replicates ##
 ```{r}
 type <-Unmethinfo$Sample_type
 pool <-Unmethinfo$Pool
@@ -77,7 +76,6 @@ dge1 <- calcNormFactors(dge)
 
 ```{r}
 v_unmethonly <- voomWithQualityWeights(dge1,design=design1,plot=F)
-write.table(v_unmethonly$E,'normcounts_unmethonly.txt',row.names=F,sep='\t',quote=F)
 ```
 
 ```{r}
@@ -94,7 +92,7 @@ dim(fit_dna_df) #525074 total windows analyzed
 nrow(fit_dna_keep01)/nrow(fit_dna_df) #1.2%
 fit_dna_df$info<-'not_regulatory'
 fit_dna_df$info[which(fit_dna_df$id %in% fit_dna_keep01$id)]<-'regulatory'
-write.table(fit_dna_df,'model1_unmethonly.txt',row.names=T,sep='\t',quote=F)
+write.table(fit_dna_df,'model1_unmethonly_results.txt',row.names=T,sep='\t',quote=F)
 ```
 
 ###################################
@@ -102,8 +100,8 @@ Model 2- MASHR
 ###################################
 
 ```{r}
-methresults=read.table('model1_methonly.txt', row.names=1)
-unmethresults=read.table('model1_unmethonly.txt', row.names=1)
+methresults=read.table('model1_methonly_results.txt', row.names=1)
+unmethresults=read.table('model1_unmethonly_results.txt', row.names=1)
 ```
 
 ```{r}
@@ -166,6 +164,6 @@ length(which(pm$unmeth[tmp1$id]-pm$meth[tmp1$id] >0))/dim(tmp1)[1] #84.8% have h
 lfsr_results<-lfsr %>%
   mutate(info= ifelse(((meth<0.05 | unmeth<0.05) & (log2< -0.58 | log2>0.58)), "MD", "not_MD"))
 
-write.table(lfsr_results,"mod2_mashr_results.txt")
+write.table(lfsr_results,"model2_mashr_results.txt")
 ```
 
