@@ -1,0 +1,344 @@
+---
+title: "mSTARR_ASE_mashr"
+output: html_document
+date: "2024-08-02"
+---
+
+##################################
+###           ASE              ###
+##################################
+
+### ASE analyses using sites that are filtered for beta > 0 in that condition in model 1
+
+
+
+```{r}
+library(prediction)
+library(aod)
+library(qvalue)
+```
+
+#load ref and total count dataframes
+```{r}
+totalcount<- read.table("ASE_totalcounts.txt")
+refcount<- read.table("ASE_refcounts.txt")
+meta<- read.table("replicateinfo.txt", header=T)
+```
+
+#filter for >0 counts in at least half of RNA replicates in either meth or unmeth, >0 counts in at least half of DNA replicates in both condition
+```{r}
+Methinfo<- subset(meta, Meth== "meth")
+Methids<- Methinfo[,"Rep_ID"]
+Meth_totalcounts <- subset(totalcount, select= colnames(totalcount) %in% Methids)
+Meth_totalRNAcounts <- Meth_totalcounts[,1:5]
+Meth_totalRNAcounts$meth_RNA_zero_counts<-apply(Meth_totalRNAcounts,1,function(a) length(which(a==0)))
+Meth_totalRNAcounts$site <- totalcount$site
+
+Unmethinfo<- subset(meta, Meth== "unmeth")
+Unmethids<- Unmethinfo[,"Rep_ID"]
+Unmeth_totalcounts <- subset(totalcount, select= colnames(totalcount) %in% Unmethids)
+Unmeth_totalRNAcounts <- Unmeth_totalcounts[,1:6]
+Unmeth_totalRNAcounts$unmeth_RNA_zero_counts<-apply(Unmeth_totalRNAcounts,1,function(a) length(which(a==0)))
+Unmeth_totalRNAcounts$site <- totalcount$site
+
+DNAinfo<- subset(meta, Sample_type== "DNA")
+DNAids<- DNAinfo[,"Rep_ID"]
+DNA_totalcounts <- subset(totalcount, select= colnames(totalcount) %in% DNAids)
+DNA_totalcounts$DNA_zero_counts<-apply(DNA_totalcounts,1,function(a) length(which(a==0)))
+DNA_totalcounts$site <- totalcount$site
+
+zerocounts_list<- list(Meth_totalRNAcounts, Unmeth_totalRNAcounts, DNA_totalcounts)
+zerocounts_all <- zerocounts_list %>% reduce(full_join, by="site") %>%
+  select(site, meth_RNA_zero_counts, unmeth_RNA_zero_counts, DNA_zero_counts)
+
+zerocounts_filter <- zerocounts_all %>%
+  filter(DNA_zero_counts < 6) %>%
+  filter(meth_RNA_zero_counts < 3 | unmeth_RNA_zero_counts < 4) 
+
+keep_sites <- zerocounts_filter$site
+
+totalcounts_keep <- subset(totalcount, site %in% keep_sites)
+refcounts_keep <- subset(refcount, site %in% keep_sites)
+```
+
+#filter for SNPs within 400bp
+```{r}
+#how close are the SNPs
+sites<- as.data.frame(str_split_fixed(totalcounts_keep$site, '_', 2)) 
+sites$V2<- as.numeric(sites$V2)
+sitebind<-cbind(sites, totalcounts_keep$site)
+
+sites_ordered<- sitebind %>%  
+  arrange(V2) %>%
+  arrange(V1)
+
+sites_ordered$distance2next <- NA
+for(i in 1:(nrow(sites_ordered) - 1)) {
+  sites_ordered$distance2next[i]  =sites_ordered$V2[i+1] - sites_ordered$V2[i]
+}
+
+closesiteslag <- sites_ordered %>%
+  filter(lag(distance2next) >= 0 & lag(distance2next) <= 400) %>%
+  select("totalcounts_keep$site")
+closesites <- sites_ordered %>%
+  filter(distance2next >= 0 & distance2next <= 400) %>%
+  select("totalcounts_keep$site")
+
+sites2remove<- rbind(closesiteslag, closesites)[[1]]
+
+totalcounts_keep_distfilter<- subset(totalcounts_keep, !c(site %in% sites2remove))
+refcounts_keep_distfilter<- subset(refcounts_keep, !c(site %in% sites2remove))
+
+write.table(totalcounts_keep_distfilter, "totalcount_keepsites_distfilt.txt")
+write.table(refcounts_keep_distfilter, "refcount_keepsites_distfilt.txt")
+```
+
+###  model methylated data  ###
+```{r}
+totalcount<- read.table("totalcount_keepsites_distfilt.txt")
+refcount<- read.table("refcount_keepsites_distfilt.txt")
+meta<- read.table("pql_meta.txt", header=T)
+```
+
+## filter for sites that are in windows with some degree of regulatory activity in model 1 for methylated condition
+```{r}
+mod1_meth_results_posbeta<- read.table("model1_methonly_results.txt") %>%
+  filter(beta_meth > 0)
+
+#bedtools intersect totalcounts_keep_distfilter with mod1_meth_results_posbeta windows
+
+filtered_methsites<-read.table("ASE_methsites_filtered.bed") %>%
+  mutate(site=paste(V1, V3, sep="_")) 
+```
+
+```{r}
+Methinfo<- subset(meta, Meth== "meth")
+Methids<- Methinfo[,"Rep_ID"]
+Reg_totalcounts<- subset(totalcount, site %in% filtered_methsites$site)
+Meth_totalcounts <- subset(Reg_totalcounts, select= colnames(Reg_totalcounts) %in% Methids | colnames(Reg_totalcounts) == "site")
+
+Reg_refcounts<- subset(refcount, site %in% filtered_methsites$site)
+Meth_refcounts <- subset(Reg_refcounts, select= colnames(Reg_refcounts) %in% Methids | colnames(Reg_refcounts) == "site")
+```
+
+## remove sites with ref/total > 0.99 or <0.01
+```{r}
+Meth_ratio<- Meth_refcounts[,-1]/Meth_totalcounts[,-1]
+Meth_ratio$site<- Meth_refcounts$site
+Meth_ratio$meanRNAratio<-apply(subset(Meth_ratio[,1:5]),1,mean, na.rm=TRUE)
+meth_notmono<- subset(Meth_ratio, meanRNAratio < 0.99 & meanRNAratio > 0.01); dim(meth_notmono) #3235
+
+#Also want to only test if there is data for half of the reps.
+meth_notmono$na_counts<-apply(subset(meth_notmono[,1:5]),1,function(a) length(which(is.na(a))))
+meth_notmono_testable<- subset(meth_notmono, na_counts <3); dim(meth_notmono_testable) #3,037 testable sites
+
+#filter counts matrices for sites we can test 
+Meth_totalcounts_testable<- subset(Meth_totalcounts, site %in% meth_notmono_testable$site)
+Meth_refcounts_testable<- subset(Meth_refcounts, site %in% meth_notmono_testable$site)
+```
+
+
+```{r}
+df <- as.data.frame(matrix(NA, 0, 4))
+
+suppressWarnings({
+i=1  
+for (i in 1:3037) {
+  siteTC <- t(Meth_totalcounts_testable[i,-1])
+  siteRC<- t(Meth_refcounts_testable[i,-1])
+  counts<- as.data.frame(cbind(siteTC, siteRC))
+  colnames(counts)<- c("totalcounts", "refcounts")
+  counts[,"Sample_type"]<- c("RNA", "RNA","RNA","RNA","RNA",
+                             "DNA","DNA","DNA","DNA","DNA")
+  counts[,"Pool"]<-c(1,1,1,2,2,1,1,1,2,2)
+  bbmod <- try(betabin(cbind(refcounts, totalcounts - refcounts) ~ Sample_type + Pool, random = ~1, data = counts), silent=TRUE)
+  try(df[i,1]<- summary(bbmod)@Coef[2,1], silent=TRUE)
+  try(df[i,2]<- summary(bbmod)@Coef[2,2], silent=TRUE)
+  try(df[i,3]<- summary(bbmod)@Coef[2,4], silent=TRUE)
+  df[i,4]<- Meth_totalcounts_testable[i,1]
+}
+
+})
+```
+
+
+```{r}
+colnames(df)<- c("meth_beta", "meth_se", "meth_p", "site")
+df$id<-1:i
+df$meth_q<-qvalue(df$meth_p)$qvalues
+fit_dna_keep<-subset(df, meth_q<0.01)
+dim(fit_dna_keep) # 1,162 SNPs at q<0.01
+dim(df) # 3037 total windows analyzed
+nrow(fit_dna_keep)/nrow(df) #38.3% at q<0.01
+df$info<-'not_significant'
+df$info[which(df$id %in% fit_dna_keep$id)]<-'significant'
+write.table(df, "ASE_meth_results.txt")
+```
+
+
+###  model unmethylated data  ###
+
+## filter for sites that are in windows with some degree of regulatory activity in model 1 for unmethylated condition
+```{r}
+mod1_unmeth_results_posbeta<- read.table("model1_unmethonly_results.txt") %>%
+  filter(beta_meth > 0)
+
+#bedtools intersect totalcounts_keep_distfilter with mod1_unmeth_results_posbeta windows
+
+filtered_unmethsites<-read.table("ASE_unmethsites_filtered.bed") %>%
+  mutate(site=paste(V1, V3, sep="_")) 
+```
+
+```{r}
+Unmethinfo<- subset(meta, Meth== "unmeth")
+Unmethids<- Unmethinfo[,"Rep_ID"]
+
+Reg_totalcounts<- subset(totalcount, site %in% filtered_unmethsites$site)
+Unmeth_totalcounts <- subset(Reg_totalcounts, select= colnames(Reg_totalcounts) %in% Unmethids | colnames(Reg_totalcounts) == "site")
+Reg_refcounts<- subset(refcount, site %in% filtered_unmethsites$site)
+Unmeth_refcounts <- subset(Reg_refcounts, select= colnames(Reg_refcounts) %in% Unmethids | colnames(Reg_refcounts) == "site")
+```
+
+## remove sites with ref/total > 0.99 or <0.01
+```{r}
+Unmeth_ratio<- Unmeth_refcounts[,-1]/Unmeth_totalcounts[,-1]
+Unmeth_ratio$site<- Unmeth_refcounts$site
+Unmeth_ratio$meanRNAratio<-apply(subset(Unmeth_ratio[,1:6]),1,mean, na.rm=TRUE)
+unmeth_notmono<- subset(Unmeth_ratio, meanRNAratio < 0.99 & meanRNAratio > 0.01); dim(unmeth_notmono) #4997
+
+#Also want to only test when there is data for half of the reps.
+unmeth_notmono$na_counts<-apply(subset(unmeth_notmono[,1:6]),1,function(a) length(which(is.na(a))))
+unmeth_notmono_testable<- subset(unmeth_notmono, na_counts <4);dim(unmeth_notmono_testable) #4,931 testable sites
+
+Unmeth_totalcounts_testable<- subset(Unmeth_totalcounts, site %in% unmeth_notmono_testable$site)
+Unmeth_refcounts_testable<- subset(Unmeth_refcounts, site %in% unmeth_notmono_testable$site)
+```
+
+
+```{r}
+df <- as.data.frame(matrix(NA, 0, 4))
+
+suppressWarnings({
+
+i=1
+    
+  for (i in 1:4931) {
+    siteTC <- t(Unmeth_totalcounts_testable[i,-1])
+    siteRC<- t(Unmeth_refcounts_testable[i,-1])
+    counts<- as.data.frame(cbind(siteTC, siteRC))
+    colnames(counts)<- c("totalcounts", "refcounts")
+    counts[,"Sample_type"]<- c("RNA", "RNA","RNA","RNA","RNA", "RNA",
+                               "DNA","DNA","DNA","DNA","DNA", "DNA")
+    counts[,"Pool"]<-c(1,1,1,2,2,2,1,1,1,2,2,2)
+    bbmod <- try(betabin(cbind(refcounts, totalcounts - refcounts) ~ Sample_type + Pool, random = ~1, data = counts), silent=TRUE)
+    try(df[i,1]<- summary(bbmod)@Coef[2,1], silent=TRUE)
+    try(df[i,2]<- summary(bbmod)@Coef[2,2], silent=TRUE)
+    try(df[i,3]<- summary(bbmod)@Coef[2,4], silent=TRUE)
+    df[i,4]<- Unmeth_totalcounts_testable[i,1]
+  }
+  
+})
+
+```
+
+
+```{r}
+colnames(df)<- c("unmeth_type_beta", "unmeth_type_se", "unmeth_type_p", "site")
+df$id<-1:i
+df$unmeth_q<-qvalue(df$unmeth_type_p)$qvalues
+fit_dna_keep<-subset(df, unmeth_q<0.01)
+dim(fit_dna_keep) # 1,858 windows at q<0.01
+dim(df) # 4931 total windows analyzed
+nrow(fit_dna_keep)/nrow(df) #37.6%
+df$info<-'not_significant'
+df$info[which(df$id %in% fit_dna_keep$id)]<-'significant'
+write.table(df, "ASE_unmeth_results.txt")
+```
+
+
+#####################################
+###           ASE MASHR          ###
+####################################
+
+
+```{r}
+###merge sites in both analyses
+methresults <- read.table("ASE_meth_results.txt")
+unmethresults <- read.table("ASE_unmeth_results.txt")
+
+match_ase<- merge(methresults, unmethresults, by="site") %>%
+  na.omit(); dim(match_ase) #1359
+
+#make the signs of the effect sizes match so that we can generate a logFC 
+match_ase_sign<-match_ase %>%
+  mutate(sign= meth_beta * unmeth_type_beta) %>%
+  mutate(direction= ifelse(sign > 0, "same", "opposite")) %>%
+  mutate(new_meth_beta= ifelse(direction == "opposite", abs(meth_beta), meth_beta)) %>%
+  mutate(new_unmeth_beta= ifelse(direction == "opposite", abs(unmeth_type_beta), unmeth_type_beta))
+
+# setup mashR
+coef<-as.data.frame(cbind(match_ase_sign$new_meth_beta, match_ase_sign$new_unmeth_beta))
+rownames(coef)<- match_ase_sign$site
+
+se<-as.data.frame(cbind(match_ase_sign$meth_se, match_ase$unmeth_type_se))
+rownames(se)<- match_ase_sign$site
+
+#make subset of strong sites and subset of random sites
+#subset beta/se values for strong sites: Those are sig sites at q<0.01 cutoff in either condition 
+
+tmp1<-unique(c(subset(match_ase_sign,meth_q<0.01)$site,subset(match_ase_sign,unmeth_q<0.01)$site)) #783 strong sites
+
+strong.coef<- subset(coef, rownames(coef) %in% tmp1)
+strong.se<- subset(se, rownames(se) %in% tmp1)
+data.strong = mash_set_data(as.matrix(strong.coef), as.matrix(strong.se))
+strong.site.locations.mod4 <- rownames(strong.coef)
+
+# random sites
+#Add a set.seed() so that the random sample is the same each time making the results reproducible. 
+set.seed(1)
+tmp2<-sample(1:dim(coef)[1],783)
+data.rand = mash_set_data(as.matrix(coef[tmp2,]), as.matrix(se[tmp2,]))
+
+# run mashR
+# https://stephenslab.github.io/mashr/articles/intro_correlations.html
+V.simple = estimate_null_correlation_simple(data.rand)
+data.rand.cor = mash_update_data(data.rand, V=V.simple)
+data.strong.cor = mash_update_data(data.strong, V=V.simple)
+
+# https://stephenslab.github.io/mashr/articles/intro_mash_dd.html
+U.pca = cov_pca(data.strong.cor,2)
+U.ed = cov_ed(data.strong.cor, U.pca)
+U.c = cov_canonical(data.rand.cor)
+m = mash(data.rand.cor, Ulist = c(U.ed,U.c), outputlevel = 1)
+#applying model generated from random data to the strong dataset
+m2 = mash(data.strong.cor, g=get_fitted_g(m), fixg=TRUE)
+
+# save output
+write.table(get_lfsr(m2),'ASE_mashr_LFSR.txt',row.names=F,sep='\t')
+write.table(get_pm(m2),'ASE_mashr_pm.txt',row.names=F,sep='\t')
+
+lfsr=read.delim('13Feb24_LFSR_ASE_mashr.txt')
+pm=read.delim('13Feb24_pm_ASE_mashr.txt')
+
+
+# call MD activity with mashR output 
+names(lfsr)<-names(pm)<-c('meth','unmeth')
+lfsr$log2<-log2(abs(pm$unmeth/pm$meth))
+lfsr$site<- strong.site.locations.mod4
+pm$site<- strong.site.locations.mod4
+
+#regulatory activity in at least one condition, log fold change of >1.5 between conditions
+tmp1<-subset(lfsr,(meth<0.05 | unmeth<0.05) & (log2< -0.58 | log2>0.58)); dim(tmp1) #575 sites with MD activity >1.5LFC
+
+dim(tmp1)[1]/dim(subset(lfsr,(meth<0.05 | unmeth<0.05) ))[1] # md 75.9% of ASE sites are MD
+
+lfsr_results<-lfsr %>%
+  mutate(info= ifelse(((meth<0.05 | unmeth<0.05) & (log2< -0.58 | log2>0.58)), "MD", "not_MD"))
+
+#add betas to this df
+lfsr_pm<-merge( pm, lfsr_results, by="site")
+colnames(lfsr_pm)<-c("site", "meth_pm", "unmeth_pm", "meth_lfsr", "unmeth_lfsr", "log2",  "info")
+
+write.table(lfsr_pm,"ASE_mashr_results.txt")
+```
+

@@ -140,6 +140,7 @@ m = mash(data.rand.cor, Ulist = c(U.ed,U.c), outputlevel = 1)
 #applying model generated from random data to the strong dataset
 m2 = mash(data.strong.cor, g=get_fitted_g(m), fixg=TRUE)
 
+
 lfsr=get_lfsr(m2)
 pm=get_pm(m2)
 lfsr$id<-1:dim(lfsr)[1]
@@ -151,8 +152,8 @@ names(lfsr)<-names(pm)<-c('meth','unmeth','id')
 lfsr$log2<-pm$unmeth-pm$meth
 
 #add info on window location for each site
-lfsr$windows<- rownames(strong.site.locations)
-pm$windows<- rownames(strong.site.locations)
+lfsr$window<- rownames(strong.site.locations)
+pm$window<- rownames(strong.site.locations)
 
 #regulatory activity in at least one condition, log fold change of >1.5 between conditions
 tmp1<-subset(lfsr,(meth<0.05 | unmeth<0.05) & (log2< -0.58 | log2>0.58)); dim(tmp1) #4052 have MD activity
@@ -164,6 +165,10 @@ length(which(pm$unmeth[tmp1$id]-pm$meth[tmp1$id] >0))/dim(tmp1)[1] #84.8% have h
 lfsr_results<-lfsr %>%
   mutate(info= ifelse(((meth<0.05 | unmeth<0.05) & (log2< -0.58 | log2>0.58)), "MD", "not_MD"))
 
-write.table(lfsr_results,"model2_mashr_results.txt")
+#add betas to this df
+lfsr_pm<-merge( pm, lfsr_results, by="window")
+colnames(lfsr_pm)<-c("site", "meth_pm", "unmeth_pm", "id1", "meth_lfsr", "unmeth_lfsr", "id2", "log2",  "info")
+
+write.table(lfsr_pm,"model2_mashr_results.txt")
 ```
 
