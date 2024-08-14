@@ -1,0 +1,936 @@
+---
+title: "chromHMM_annotations"
+output: html_document
+date: "2024-08-13"
+---
+
+#################################
+# chromHMM - regulatory windows #
+#################################
+
+
+# make bed file of regulatory sites found in unmeth or meth
+```{r}
+unmeth_results<- read.table('model1_unmethonly_results.txt', header=T)
+unmeth_results$windows <- rownames(unmeth_results)
+colnames(unmeth_results)<- c("pval", "beta", "se", "id", "q", "info", "window")
+
+
+meth_results<- read.table('model1_methonly_results.txt', header=T)
+meth_results$windows <- rownames(meth_results)
+colnames(meth_results)<- c("pval", "beta", "se", "id", "q", "info", "window")
+
+both_results <- rbind(unmeth_results, meth_results)
+
+both_reg <- both_results %>%
+  filter(info == "regulatory") %>%
+  select(window) %>%
+  distinct() %>%
+  mutate(info = "regulatory")
+
+both_notreg<- subset(both_results, !c(window %in% both_reg$window)) %>%
+  select(window) %>%
+  distinct() %>%
+  mutate(info = "not_regulatory")
+
+  
+
+model1_allresults<-rbind(both_reg, both_notreg) %>%
+  separate(window, c("chr", "start", "stop"))
+model1_allresults$start<-as.numeric(model1_allresults$start)
+model1_allresults$stop<-as.numeric(model1_allresults$stop)
+
+#Then overlap this ASE_allresults file with the chromHMM annotations
+model1_allresults_bed<-model1_allresults %>%
+  select(chr, start, stop)
+
+write.table(model1_allresults_bed, "Bothconditions_mod1_results.bed", row.names = F, col.names = F, quote=F, sep="\t")
+
+#write.table(both_bed, "Bothconditions_regulatorysites.bed", quote=F, sep="\t", row.names=F, col.names=F)
+```
+
+#overlap bed file of regulatory windows with 15 different bed files- each containing the locations of one of the chromHMM states 
+
+
+#active promoter 1
+```{r}
+ActivePromoter1 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_1ActivePromoter.bed")
+colnames(ActivePromoter1) <- c("chr", "start", "stop", "chromHMM")
+
+AP1join <- left_join(model1_allresults, ActivePromoter1, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(AP1join$info, AP1join$chromHMMedit))
+AP1<-fisher.test(table(AP1join$info, AP1join$chromHMMedit))$estimate
+```
+
+#weak promoter
+```{r}
+WeakPromoter2 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_2WeakPromoter.bed")
+colnames(WeakPromoter2) <- c("chr", "start", "stop", "chromHMM")
+
+WP2join <- left_join(model1_allresults, WeakPromoter2, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WP2join$info, WP2join$chromHMMedit))
+WP2<-fisher.test(table(WP2join$info, WP2join$chromHMMedit))$estimate
+```
+
+#poised promoter
+```{r}
+PoisedPromoter3 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_3PoisedPromoter.bed")
+colnames(PoisedPromoter3) <- c("chr", "start", "stop", "chromHMM")
+
+PP3join <- left_join(model1_allresults, PoisedPromoter3, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0,1))
+
+fisher.test(table(PP3join$info, PP3join$chromHMMedit))
+PP3<-fisher.test(table(PP3join$info, PP3join$chromHMMedit))$estimate
+```
+
+#strong enhancer 1
+```{r}
+StrongEnhancer4 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_4StrongEnhancer.bed")
+colnames(StrongEnhancer4) <- c("chr", "start", "stop", "chromHMM")
+
+SE4join <- left_join(model1_allresults, StrongEnhancer4, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0 , 0, 1))
+
+fisher.test(table(SE4join$info, SE4join$chromHMMedit))
+SE4<-fisher.test(table(SE4join$info, SE4join$chromHMMedit))$estimate
+```
+
+#strong enhancer 2
+```{r}
+StrongEnhancer5 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_5StrongEnhancer.bed")
+colnames(StrongEnhancer5) <- c("chr", "start", "stop", "chromHMM")
+
+SE5join <- left_join(model1_allresults, StrongEnhancer5, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0,0,1))
+
+fisher.test(table(SE5join$info, SE5join$chromHMMedit))
+SE5<-fisher.test(table(SE5join$info, SE5join$chromHMMedit))$estimate
+```
+
+#weak enhancer 1
+```{r}
+WeakEnhancer6 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_6WeakEnhancer.bed")
+colnames(WeakEnhancer6) <- c("chr", "start", "stop", "chromHMM")
+
+WE6join <- left_join(model1_allresults, WeakEnhancer6, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE6join$info, WE6join$chromHMMedit))
+WE6<-fisher.test(table(WE6join$info, WE6join$chromHMMedit))$estimate
+```
+
+#weak enhancer 2
+```{r}
+WeakEnhancer7 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_7WeakEnhancer.bed")
+colnames(WeakEnhancer7) <- c("chr", "start", "stop", "chromHMM")
+
+WE7join <- left_join(model1_allresults, WeakEnhancer7, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE7join$info, WE7join$chromHMMedit))
+WE7<-fisher.test(table(WE7join$info, WE7join$chromHMMedit))$estimate
+```
+
+#insulator
+```{r}
+Insulator8 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_8Insulator.bed")
+colnames(Insulator8) <- c("chr", "start", "stop", "chromHMM")
+         
+I8join <- left_join(model1_allresults, Insulator8, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(I8join$info, I8join$chromHMMedit))
+I8<-fisher.test(table(I8join$info, I8join$chromHMMedit))$estimate
+```
+
+
+#txn transition
+```{r}
+TxnTransition9 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_9TxnTransition.bed")
+colnames(TxnTransition9) <- c("chr", "start", "stop", "chromHMM")
+
+TT9join <- left_join(model1_allresults, TxnTransition9, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TT9join$info, TT9join$chromHMMedit))
+TT9<-fisher.test(table(TT9join$info, TT9join$chromHMMedit))$estimate
+```
+
+
+#txn elongation
+```{r}
+TxnElongation10 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_10TxnElongation.bed")
+colnames(TxnElongation10) <- c("chr", "start", "stop", "chromHMM")
+
+TE10join <- left_join(model1_allresults, TxnElongation10, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TE10join$info, TE10join$chromHMMedit))
+TE10<-fisher.test(table(TE10join$info, TE10join$chromHMMedit))$estimate
+```
+
+
+#weak txn
+```{r}
+WeakTxn11 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_11WeakTxn.bed")
+colnames(WeakTxn11) <- c("chr", "start", "stop", "chromHMM")
+
+WT11join <- left_join(model1_allresults, WeakTxn11, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WT11join$info, WT11join$chromHMMedit))
+WT11<-fisher.test(table(WT11join$info, WT11join$chromHMMedit))$estimate
+```
+
+#repressed
+```{r}
+Repressed12 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_12Repressed.bed")
+colnames(Repressed12) <- c("chr", "start", "stop", "chromHMM")
+
+R12join <- left_join(model1_allresults, Repressed12, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R12join$info, R12join$chromHMMedit))
+R12<-fisher.test(table(R12join$info, R12join$chromHMMedit))$estimate
+```
+
+
+#heterochromatin
+```{r}
+Heterochrom13 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_13Heterochrom.bed")
+colnames(Heterochrom13) <- c("chr", "start", "stop", "chromHMM")
+
+H13join <- left_join(model1_allresults, Heterochrom13, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(H13join$info, H13join$chromHMMedit))
+H13<-fisher.test(table(H13join$info, H13join$chromHMMedit))$estimate
+```
+
+#repetitive 1
+```{r}
+RepetitiveCNV14 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_14RepetitiveCNV.bed")
+colnames(RepetitiveCNV14) <- c("chr", "start", "stop", "chromHMM")
+
+R14join <- left_join(model1_allresults, RepetitiveCNV14, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R14join$info, R14join$chromHMMedit))
+R14<-fisher.test(table(R14join$info, R14join$chromHMMedit))$estimate
+```
+
+#repetitive 2
+```{r}
+RepetitiveCNV15 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_15RepetitiveCNV.bed")
+colnames(RepetitiveCNV15) <- c("chr", "start", "stop", "chromHMM")
+
+R15join <- left_join(model1_allresults, RepetitiveCNV15, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+  fisher.test(table(R15join$info, R15join$chromHMMedit))
+R15<-fisher.test(table(R15join$info, R15join$chromHMMedit))$estimate
+```
+
+
+```{r}
+all_anno<-as.data.frame(do.call(rbind, list(AP1, WP2, PP3, SE4, SE5, WE6, WE7, I8, TT9, TE10, WT11, R12, H13, R14, R15)))
+
+all_anno$Annotation<-c("Active Promoter", "Weak Promoter", "Poised Promoter", "Strong Enhancer 1", "Strong Enhancer 2", "Weak Enhancer 1", "Weak Enhancer 2", "Insulator", "Transcription Transition", "Transcription Elongation", "Weak Transcription", "Repressed", "Heterochromatin", "Repetitive 1", "Repetitive 2")
+
+all_anno$OR<-all_anno[,1]
+all_anno$log2<-log2(all_anno$OR)
+all_anno<-all_anno[,-1]
+
+write.csv(all_anno, "14Aug24_Regulatory_windows_bothconditions_chromHMM_annotations.csv")
+```
+
+
+
+#################################
+# chromHMM - regulatory windows unmeth condition #
+#################################
+
+
+# make bed file of regulatory sites found in unmeth or meth
+```{r}
+unmeth_results<- read.table('model1_unmethonly_results.txt', header=T)
+unmeth_results$windows <- rownames(unmeth_results)
+colnames(unmeth_results)<- c("pval", "beta", "se", "id", "q", "info", "window")
+unmeth_results_only<- unmeth_results %>%
+  select(window, info) %>%
+    separate(window, c("chr", "start", "stop"))
+
+unmeth_results_only$start<-as.numeric(unmeth_results_only$start)
+unmeth_results_only$stop<-as.numeric(unmeth_results_only$stop)
+```
+
+#active promoter 1
+```{r}
+ActivePromoter1 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_1ActivePromoter.bed")
+colnames(ActivePromoter1) <- c("chr", "start", "stop", "chromHMM")
+
+AP1join <- left_join(unmeth_results_only, ActivePromoter1, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(AP1join$info, AP1join$chromHMMedit))
+AP1<-fisher.test(table(AP1join$info, AP1join$chromHMMedit))$estimate
+```
+
+#weak promoter
+```{r}
+WeakPromoter2 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_2WeakPromoter.bed")
+colnames(WeakPromoter2) <- c("chr", "start", "stop", "chromHMM")
+
+WP2join <- left_join(unmeth_results_only, WeakPromoter2, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WP2join$info, WP2join$chromHMMedit))
+WP2<-fisher.test(table(WP2join$info, WP2join$chromHMMedit))$estimate
+```
+
+#poised promoter
+```{r}
+PoisedPromoter3 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_3PoisedPromoter.bed")
+colnames(PoisedPromoter3) <- c("chr", "start", "stop", "chromHMM")
+
+PP3join <- left_join(unmeth_results_only, PoisedPromoter3, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0,1))
+
+fisher.test(table(PP3join$info, PP3join$chromHMMedit))
+PP3<-fisher.test(table(PP3join$info, PP3join$chromHMMedit))$estimate
+```
+
+#strong enhancer 1
+```{r}
+StrongEnhancer4 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_4StrongEnhancer.bed")
+colnames(StrongEnhancer4) <- c("chr", "start", "stop", "chromHMM")
+
+SE4join <- left_join(unmeth_results_only, StrongEnhancer4, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0 , 0, 1))
+
+fisher.test(table(SE4join$info, SE4join$chromHMMedit))
+SE4<-fisher.test(table(SE4join$info, SE4join$chromHMMedit))$estimate
+```
+
+#strong enhancer 2
+```{r}
+StrongEnhancer5 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_5StrongEnhancer.bed")
+colnames(StrongEnhancer5) <- c("chr", "start", "stop", "chromHMM")
+
+SE5join <- left_join(unmeth_results_only, StrongEnhancer5, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0,0,1))
+
+fisher.test(table(SE5join$info, SE5join$chromHMMedit))
+SE5<-fisher.test(table(SE5join$info, SE5join$chromHMMedit))$estimate
+```
+
+#weak enhancer 1
+```{r}
+WeakEnhancer6 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_6WeakEnhancer.bed")
+colnames(WeakEnhancer6) <- c("chr", "start", "stop", "chromHMM")
+
+WE6join <- left_join(unmeth_results_only, WeakEnhancer6, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE6join$info, WE6join$chromHMMedit))
+WE6<-fisher.test(table(WE6join$info, WE6join$chromHMMedit))$estimate
+```
+
+#weak enhancer 2
+```{r}
+WeakEnhancer7 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_7WeakEnhancer.bed")
+colnames(WeakEnhancer7) <- c("chr", "start", "stop", "chromHMM")
+
+WE7join <- left_join(unmeth_results_only, WeakEnhancer7, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE7join$info, WE7join$chromHMMedit))
+WE7<-fisher.test(table(WE7join$info, WE7join$chromHMMedit))$estimate
+```
+
+#insulator
+```{r}
+Insulator8 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_8Insulator.bed")
+colnames(Insulator8) <- c("chr", "start", "stop", "chromHMM")
+         
+I8join <- left_join(unmeth_results_only, Insulator8, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(I8join$info, I8join$chromHMMedit))
+I8<-fisher.test(table(I8join$info, I8join$chromHMMedit))$estimate
+```
+
+#txn transition
+```{r}
+TxnTransition9 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_9TxnTransition.bed")
+colnames(TxnTransition9) <- c("chr", "start", "stop", "chromHMM")
+
+TT9join <- left_join(unmeth_results_only, TxnTransition9, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TT9join$info, TT9join$chromHMMedit))
+TT9<-fisher.test(table(TT9join$info, TT9join$chromHMMedit))$estimate
+```
+
+#txn elongation
+```{r}
+TxnElongation10 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_10TxnElongation.bed")
+colnames(TxnElongation10) <- c("chr", "start", "stop", "chromHMM")
+
+TE10join <- left_join(unmeth_results_only, TxnElongation10, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TE10join$info, TE10join$chromHMMedit))
+TE10<-fisher.test(table(TE10join$info, TE10join$chromHMMedit))$estimate
+```
+
+#weak txn
+```{r}
+WeakTxn11 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_11WeakTxn.bed")
+colnames(WeakTxn11) <- c("chr", "start", "stop", "chromHMM")
+
+WT11join <- left_join(unmeth_results_only, WeakTxn11, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WT11join$info, WT11join$chromHMMedit))
+WT11<-fisher.test(table(WT11join$info, WT11join$chromHMMedit))$estimate
+```
+
+#repressed
+```{r}
+Repressed12 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_12Repressed.bed")
+colnames(Repressed12) <- c("chr", "start", "stop", "chromHMM")
+
+R12join <- left_join(unmeth_results_only, Repressed12, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R12join$info, R12join$chromHMMedit))
+R12<-fisher.test(table(R12join$info, R12join$chromHMMedit))$estimate
+```
+
+#heterochromatin
+```{r}
+Heterochrom13 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_13Heterochrom.bed")
+colnames(Heterochrom13) <- c("chr", "start", "stop", "chromHMM")
+
+H13join <- left_join(unmeth_results_only, Heterochrom13, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(H13join$info, H13join$chromHMMedit))
+H13<-fisher.test(table(H13join$info, H13join$chromHMMedit))$estimate
+```
+
+#repetitive 1
+```{r}
+RepetitiveCNV14 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_14RepetitiveCNV.bed")
+colnames(RepetitiveCNV14) <- c("chr", "start", "stop", "chromHMM")
+
+R14join <- left_join(unmeth_results_only, RepetitiveCNV14, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R14join$info, R14join$chromHMMedit))
+R14<-fisher.test(table(R14join$info, R14join$chromHMMedit))$estimate
+```
+
+#repetitive 2
+```{r}
+RepetitiveCNV15 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_15RepetitiveCNV.bed")
+colnames(RepetitiveCNV15) <- c("chr", "start", "stop", "chromHMM")
+
+R15join <- left_join(unmeth_results_only, RepetitiveCNV15, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+  fisher.test(table(R15join$info, R15join$chromHMMedit))
+R15<-fisher.test(table(R15join$info, R15join$chromHMMedit))$estimate
+```
+
+
+```{r}
+all_anno<-as.data.frame(do.call(rbind, list(AP1, WP2, PP3, SE4, SE5, WE6, WE7, I8, TT9, TE10, WT11, R12, H13, R14, R15)))
+
+all_anno$Annotation<-c("Active Promoter", "Weak Promoter", "Poised Promoter", "Strong Enhancer 1", "Strong Enhancer 2", "Weak Enhancer 1", "Weak Enhancer 2", "Insulator", "Transcription Transition", "Transcription Elongation", "Weak Transcription", "Repressed", "Heterochromatin", "Repetitive 1", "Repetitive 2")
+
+all_anno$OR<-all_anno[,1]
+all_anno$log2<-log2(all_anno$OR)
+all_anno<-all_anno[,-1]
+
+write.csv(all_anno, "14Aug24_Regulatory_windows_unmethylated_chromHMM_annotations.csv")
+```
+
+
+
+#################################
+# chromHMM - regulatory windows unmeth condition #
+#################################
+
+
+# make bed file of regulatory sites found in unmeth or meth
+```{r}
+meth_results<- read.table('model1_methonly_results.txt', header=T)
+meth_results$windows <- rownames(meth_results)
+colnames(meth_results)<- c("pval", "beta", "se", "id", "q", "info", "window")
+meth_results_only<- meth_results %>%
+  select(window, info) %>%
+    separate(window, c("chr", "start", "stop"))
+
+meth_results_only$start<-as.numeric(meth_results_only$start)
+meth_results_only$stop<-as.numeric(meth_results_only$stop)
+
+
+#active promoter 1
+
+ActivePromoter1 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_1ActivePromoter.bed")
+colnames(ActivePromoter1) <- c("chr", "start", "stop", "chromHMM")
+
+AP1join <- left_join(meth_results_only, ActivePromoter1, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(AP1join$info, AP1join$chromHMMedit))
+
+AP1<-fisher.test(table(AP1join$info, AP1join$chromHMMedit))$p.value
+AP1[[2]]<-fisher.test(table(AP1join$info, AP1join$chromHMMedit))$estimate
+
+
+#weak promoter
+
+WeakPromoter2 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_2WeakPromoter.bed")
+colnames(WeakPromoter2) <- c("chr", "start", "stop", "chromHMM")
+
+WP2join <- left_join(meth_results_only, WeakPromoter2, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WP2join$info, WP2join$chromHMMedit))
+
+WP2<-fisher.test(table(WP2join$info, WP2join$chromHMMedit))$p.value
+WP2[[2]]<-fisher.test(table(WP2join$info, WP2join$chromHMMedit))$estimate
+
+
+#poised promoter
+
+PoisedPromoter3 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_3PoisedPromoter.bed")
+colnames(PoisedPromoter3) <- c("chr", "start", "stop", "chromHMM")
+
+PP3join <- left_join(meth_results_only, PoisedPromoter3, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0,1))
+
+fisher.test(table(PP3join$info, PP3join$chromHMMedit))
+
+PP3<-fisher.test(table(PP3join$info, PP3join$chromHMMedit))$p.value
+PP3[[2]]<-fisher.test(table(PP3join$info, PP3join$chromHMMedit))$estimate
+
+
+#strong enhancer 1
+
+StrongEnhancer4 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_4StrongEnhancer.bed")
+colnames(StrongEnhancer4) <- c("chr", "start", "stop", "chromHMM")
+
+SE4join <- left_join(meth_results_only, StrongEnhancer4, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0 , 0, 1))
+
+fisher.test(table(SE4join$info, SE4join$chromHMMedit))
+
+SE4<-fisher.test(table(SE4join$info, SE4join$chromHMMedit))$p.value
+SE4[[2]]<-fisher.test(table(SE4join$info, SE4join$chromHMMedit))$estimate
+
+
+#strong enhancer 2
+
+StrongEnhancer5 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_5StrongEnhancer.bed")
+colnames(StrongEnhancer5) <- c("chr", "start", "stop", "chromHMM")
+
+SE5join <- left_join(meth_results_only, StrongEnhancer5, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0,0,1))
+
+fisher.test(table(SE5join$info, SE5join$chromHMMedit))
+
+SE5<-fisher.test(table(SE5join$info, SE5join$chromHMMedit))$p.value
+SE5[[2]]<-fisher.test(table(SE5join$info, SE5join$chromHMMedit))$estimate
+
+
+#weak enhancer 1
+
+WeakEnhancer6 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_6WeakEnhancer.bed")
+colnames(WeakEnhancer6) <- c("chr", "start", "stop", "chromHMM")
+
+WE6join <- left_join(meth_results_only, WeakEnhancer6, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE6join$info, WE6join$chromHMMedit))
+
+WE6<-fisher.test(table(WE6join$info, WE6join$chromHMMedit))$p.value
+WE6[[2]]<-fisher.test(table(WE6join$info, WE6join$chromHMMedit))$estimate
+
+
+#weak enhancer 2
+
+WeakEnhancer7 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_7WeakEnhancer.bed")
+colnames(WeakEnhancer7) <- c("chr", "start", "stop", "chromHMM")
+
+WE7join <- left_join(meth_results_only, WeakEnhancer7, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE7join$info, WE7join$chromHMMedit))
+
+WE7<-fisher.test(table(WE7join$info, WE7join$chromHMMedit))$p.value
+WE7[[2]]<-fisher.test(table(WE7join$info, WE7join$chromHMMedit))$estimate
+
+
+#insulator
+
+Insulator8 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_8Insulator.bed")
+colnames(Insulator8) <- c("chr", "start", "stop", "chromHMM")
+         
+I8join <- left_join(meth_results_only, Insulator8, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(I8join$info, I8join$chromHMMedit))
+
+I8<-fisher.test(table(I8join$info, I8join$chromHMMedit))$p.value
+I8[[2]]<-fisher.test(table(I8join$info, I8join$chromHMMedit))$estimate
+
+
+#txn transition
+
+TxnTransition9 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_9TxnTransition.bed")
+colnames(TxnTransition9) <- c("chr", "start", "stop", "chromHMM")
+
+TT9join <- left_join(meth_results_only, TxnTransition9, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TT9join$info, TT9join$chromHMMedit))
+
+TT9<-fisher.test(table(TT9join$info, TT9join$chromHMMedit))$p.value
+TT9[[2]]<-fisher.test(table(TT9join$info, TT9join$chromHMMedit))$estimate
+
+
+#txn elongation
+
+TxnElongation10 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_10TxnElongation.bed")
+colnames(TxnElongation10) <- c("chr", "start", "stop", "chromHMM")
+
+TE10join <- left_join(meth_results_only, TxnElongation10, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TE10join$info, TE10join$chromHMMedit))
+
+TE10<-fisher.test(table(TE10join$info, TE10join$chromHMMedit))$p.value
+TE10[[2]]<-fisher.test(table(TE10join$info, TE10join$chromHMMedit))$estimate
+
+
+#weak txn
+
+WeakTxn11 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_11WeakTxn.bed")
+colnames(WeakTxn11) <- c("chr", "start", "stop", "chromHMM")
+
+WT11join <- left_join(meth_results_only, WeakTxn11, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WT11join$info, WT11join$chromHMMedit))
+
+WT11<-fisher.test(table(WT11join$info, WT11join$chromHMMedit))$p.value
+WT11[[2]]<-fisher.test(table(WT11join$info, WT11join$chromHMMedit))$estimate
+
+
+#repressed
+
+Repressed12 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_12Repressed.bed")
+colnames(Repressed12) <- c("chr", "start", "stop", "chromHMM")
+
+R12join <- left_join(meth_results_only, Repressed12, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R12join$info, R12join$chromHMMedit))
+
+R12<-fisher.test(table(R12join$info, R12join$chromHMMedit))$p.value
+R12[[2]]<-fisher.test(table(R12join$info, R12join$chromHMMedit))$estimate
+
+
+#heterochromatin
+
+Heterochrom13 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_13Heterochrom.bed")
+colnames(Heterochrom13) <- c("chr", "start", "stop", "chromHMM")
+
+H13join <- left_join(meth_results_only, Heterochrom13, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(H13join$info, H13join$chromHMMedit))
+
+H13<-fisher.test(table(H13join$info, H13join$chromHMMedit))$p.value
+H13[[2]]<-fisher.test(table(H13join$info, H13join$chromHMMedit))$estimate
+
+
+#repetitive 1
+
+RepetitiveCNV14 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_14RepetitiveCNV.bed")
+colnames(RepetitiveCNV14) <- c("chr", "start", "stop", "chromHMM")
+
+R14join <- left_join(meth_results_only, RepetitiveCNV14, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R14join$info, R14join$chromHMMedit))
+
+R14<-fisher.test(table(R14join$info, R14join$chromHMMedit))$p.value
+R14[[2]]<-fisher.test(table(R14join$info, R14join$chromHMMedit))$estimate
+
+
+#repetitive 2
+
+RepetitiveCNV15 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_allwindows/chromHMM_intersect_15RepetitiveCNV.bed")
+colnames(RepetitiveCNV15) <- c("chr", "start", "stop", "chromHMM")
+
+R15join <- left_join(meth_results_only, RepetitiveCNV15, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+  fisher.test(table(R15join$info, R15join$chromHMMedit))
+  
+R15<-fisher.test(table(R15join$meth_results_only, R15join$chromHMMedit))$p.value
+R15[[2]]<-fisher.test(table(R15join$info, R15join$chromHMMedit))$estimate
+
+
+
+
+all_anno<-as.data.frame(do.call(rbind, list(AP1, WP2, PP3, SE4, SE5, WE6, WE7, I8, TT9, TE10, WT11, R12, H13, R14, R15)))
+colnames(all_anno)<-c("pvalue", "OR")
+
+all_anno$Annotation<-c("Active Promoter", "Weak Promoter", "Poised Promoter", "Strong Enhancer 1", "Strong Enhancer 2", "Weak Enhancer 1", "Weak Enhancer 2", "Insulator", "Transcription Transition", "Transcription Elongation", "Weak Transcription", "Repressed", "Heterochromatin", "Repetitive 1", "Repetitive 2")
+
+all_anno$log2<-log2(all_anno$OR)
+
+write.csv(all_anno, "14Aug24_Regulatory_windows_methylated_chromHMM_annotations.csv")
+```
+
+
+
+
+### Do this again for ASE sites (sig + mono sites)
+
+```{r}
+sig_or_mono_unmeth<-read.table("ASE_plus_nearlymono_unmeth.bed") %>%
+  mutate(site=paste(V1, V2, V3, sep="_"))
+sig_or_mono_meth<-read.table("ASE_plus_nearlymono_meth.bed") %>%
+  mutate(site=paste(V1, V2, V3, sep="_"))
+
+totalASE_eithercond<-rbind(sig_or_mono_unmeth, sig_or_mono_meth) %>%
+  distinct(site) %>%
+  separate(site, c("chr", "start", "stop"))
+totalASE_eithercond$info<-"significant"
+
+ASE_bothnotsig<-read.table("5Jun24_ASEsites_bothcond_notsig.bed")[,1:3]
+colnames(ASE_bothnotsig) <- c("chr", "start", "stop")
+ASE_bothnotsig$info<-"not_significant"
+
+ASE_allresults<-rbind(totalASE_eithercond, ASE_bothnotsig)
+ASE_allresults$start<-as.numeric(ASE_allresults$start)
+ASE_allresults$stop<-as.numeric(ASE_allresults$stop)
+
+#Then overlap this ASE_allresults file with the chromHMM annotations
+ASE_allresults_bed<-ASE_allresults %>%
+  select(chr, start, stop)
+
+write.table(ASE_allresults_bed, "Bothconditions_ASEplusmono_sites.bed", row.names = F, col.names = F, quote=F, sep="\t")
+```
+
+#overlap bed file of regulatory windows with 15 different bed files- each containing the locations of one of the chromHMM states 
+
+#active promoter 1
+```{r}
+ActivePromoter1 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_1ActivePromoter (2).bed")
+colnames(ActivePromoter1) <- c("chr", "start", "stop", "chromHMM")
+
+AP1join <- left_join(ASE_allresults, ActivePromoter1, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(AP1join$info, AP1join$chromHMM))
+
+AP1<-fisher.test(table(AP1join$info, AP1join$chromHMMedit))$estimate
+```
+
+#weak promoter
+```{r}
+WeakPromoter2 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_2WeakPromoter (2).bed")
+colnames(WeakPromoter2) <- c("chr", "start", "stop", "chromHMM")
+
+WP2join <- left_join(ASE_allresults, WeakPromoter2, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WP2join$info, WP2join$chromHMMedit))
+WP2<-fisher.test(table(WP2join$info, WP2join$chromHMMedit))$estimate
+```
+
+#poised promoter
+```{r}
+PoisedPromoter3 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_3PoisedPromoter (2).bed")
+colnames(PoisedPromoter3) <- c("chr", "start", "stop", "chromHMM")
+
+PP3join <- left_join(ASE_allresults, PoisedPromoter3, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0,1))
+
+fisher.test(table(PP3join$info, PP3join$chromHMMedit))
+PP3<-fisher.test(table(PP3join$info, PP3join$chromHMMedit))$estimate
+```
+
+#strong enhancer 1
+```{r}
+StrongEnhancer4 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_4StrongEnhancer (2).bed")
+colnames(StrongEnhancer4) <- c("chr", "start", "stop", "chromHMM")
+
+SE4join <- left_join(ASE_allresults, StrongEnhancer4, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0 , 0, 1))
+
+fisher.test(table(SE4join$info, SE4join$chromHMMedit))
+SE4<-fisher.test(table(SE4join$info, SE4join$chromHMMedit))$estimate
+```
+
+#strong enhancer 2
+```{r}
+StrongEnhancer5 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_5StrongEnhancer (2).bed")
+colnames(StrongEnhancer5) <- c("chr", "start", "stop", "chromHMM")
+
+SE5join <- left_join(ASE_allresults, StrongEnhancer5, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0,0,1))
+
+fisher.test(table(SE5join$info, SE5join$chromHMMedit))
+SE5<-fisher.test(table(SE5join$info, SE5join$chromHMMedit))$estimate
+```
+
+#weak enhancer 1
+```{r}
+WeakEnhancer6 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_6WeakEnhancer (2).bed")
+colnames(WeakEnhancer6) <- c("chr", "start", "stop", "chromHMM")
+
+WE6join <- left_join(ASE_allresults, WeakEnhancer6, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE6join$info, WE6join$chromHMMedit))
+WE6<-fisher.test(table(WE6join$info, WE6join$chromHMMedit))$estimate
+```
+
+#weak enhancer 2
+```{r}
+WeakEnhancer7 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_7WeakEnhancer (2).bed")
+colnames(WeakEnhancer7) <- c("chr", "start", "stop", "chromHMM")
+
+WE7join <- left_join(ASE_allresults, WeakEnhancer7, by=c("chr", "start", "stop"))%>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WE7join$info, WE7join$chromHMMedit))
+WE7<-fisher.test(table(WE7join$info, WE7join$chromHMMedit))$estimate
+```
+
+#insulator
+```{r}
+Insulator8 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_8Insulator (2).bed")
+colnames(Insulator8) <- c("chr", "start", "stop", "chromHMM")
+         
+I8join <- left_join(ASE_allresults, Insulator8, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(I8join$info, I8join$chromHMMedit))
+I8<-fisher.test(table(I8join$info, I8join$chromHMMedit))$estimate
+```
+
+
+#txn transition
+```{r}
+TxnTransition9 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_9TxnTransition (2).bed")
+colnames(TxnTransition9) <- c("chr", "start", "stop", "chromHMM")
+
+TT9join <- left_join(ASE_allresults, TxnTransition9, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TT9join$info, TT9join$chromHMMedit))
+TT9<-fisher.test(table(TT9join$info, TT9join$chromHMMedit))$estimate
+```
+
+
+#txn elongation
+```{r}
+TxnElongation10 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_10TxnElongation (2).bed")
+colnames(TxnElongation10) <- c("chr", "start", "stop", "chromHMM")
+
+TE10join <- left_join(ASE_allresults, TxnElongation10, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(TE10join$info, TE10join$chromHMMedit))
+TE10<-fisher.test(table(TE10join$info, TE10join$chromHMMedit))$estimate
+```
+
+
+#weak txn
+```{r}
+WeakTxn11 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_11WeakTxn (2).bed")
+colnames(WeakTxn11) <- c("chr", "start", "stop", "chromHMM")
+
+WT11join <- left_join(ASE_allresults, WeakTxn11, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(WT11join$info, WT11join$chromHMMedit))
+WT11<-fisher.test(table(WT11join$info, WT11join$chromHMMedit))$estimate
+```
+
+#repressed
+```{r}
+Repressed12 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_12Repressed (2).bed")
+colnames(Repressed12) <- c("chr", "start", "stop", "chromHMM")
+
+R12join <- left_join(ASE_allresults, Repressed12, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R12join$info, R12join$chromHMMedit))
+R12<-fisher.test(table(R12join$info, R12join$chromHMMedit))$estimate
+```
+
+
+#heterochromatin
+```{r}
+Heterochrom13 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_13Heterochrom (2).bed")
+colnames(Heterochrom13) <- c("chr", "start", "stop", "chromHMM")
+
+H13join <- left_join(ASE_allresults, Heterochrom13, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(H13join$info, H13join$chromHMMedit))
+H13<-fisher.test(table(H13join$info, H13join$chromHMMedit))$estimate
+```
+
+#repetitive 1
+```{r}
+RepetitiveCNV14 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_14RepetitiveCNV (2).bed")
+colnames(RepetitiveCNV14) <- c("chr", "start", "stop", "chromHMM")
+
+R14join <- left_join(ASE_allresults, RepetitiveCNV14, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R14join$info, R14join$chromHMMedit))
+R14<-fisher.test(table(R14join$info, R14join$chromHMMedit))$estimate
+```
+
+
+#repetitive 2
+```{r}
+RepetitiveCNV15 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_15RepetitiveCNV (2).bed")
+colnames(RepetitiveCNV15) <- c("chr", "start", "stop", "chromHMM")
+
+R15join <- left_join(ASE_allresults, RepetitiveCNV15, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0, 0, 1))
+
+fisher.test(table(R15join$info, R15join$chromHMMedit))  
+R15<-fisher.test(table(R15join$info, R15join$chromHMMedit))$estimate
+```
+
+```{r}
+all_anno<-as.data.frame(do.call(rbind, list(AP1, WP2, PP3, SE4, SE5, WE6, WE7, I8, TT9, TE10, WT11, R12, H13, R14, R15)))
+
+all_anno$Annotation<-c("Active Promoter", "Weak Promoter", "Poised Promoter", "Strong Enhancer 1", "Strong Enhancer 2", "Weak Enhancer 1", "Weak Enhancer 2", "Insulator", "Transcription Transition", "Transcription Elongation", "Weak Transcription", "Repressed", "Heterochromatin", "Repetitive 1", "Repetitive 2")
+
+all_anno$OR<-all_anno[,1]
+all_anno$log2<-log2(all_anno$OR)
+
+write.csv(all_anno, "ASEplusmono_site_chromHMM_annotations.csv")
+```
+

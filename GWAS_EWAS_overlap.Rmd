@@ -1,0 +1,136 @@
+---
+title: "GWAS_EWAS_overlap"
+output: html_document
+date: "2024-08-14"
+---
+
+Match with GWAS hits
+
+```{r}
+#made GWAS hits into bed file, expanded hits by +/- 400 bp, then intersected with 575 MD ASE sites
+
+GWAShits<- fread("GWAShits_siteformat.txt")
+colnames(GWAShits)<-c("site", "trait", "PMID")
+
+#intersect MD sites with +/- 400bp of gwas hits
+overlap_gwas_MDsites<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
+  mutate(site=paste(V4, V5, V6, sep="_")) %>%
+  distinct(site); dim(overlap_gwas_MDsites) #98 unique MD sites
+
+#overlap each site with a trait
+overlap_gwas_GWASsites<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
+  rename(chr= V1) %>%
+  mutate(start = V2 + 400) %>%
+  mutate(end= V3 - 400) %>%
+  mutate(site=paste(chr, start, end, sep="_")) %>%
+  distinct(site); dim(overlap_gwas_GWASsites) #114 unique GWAS hits
+
+#how many directly overlap?
+direct_overlap<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
+   mutate(start = V2 + 400) %>%
+  filter(start == V5); dim(direct_overlap) #75 directly overlap
+
+GWAS_merged_traits<-merge(overlap_gwas_GWASsites, GWAShits, by="site") %>%
+  select(site, trait, PMID) %>%
+  distinct(); dim(merged) #153 unique GWAS-trait associations 
+
+write.csv(GWAS_merged_traits, "GWAS_traits.csv")
+```
+
+
+#Match with EWAS probes/hits
+```{r}
+EWAShits<-fread("EWAS_Atlas_associations.tsv")
+EWASprobes<-fread("EWAS_Atlas_probe_annotations.tsv")
+
+EWASprobes$probe_ID<-EWASprobes$"Probe id"
+
+EWASprobesites<- EWASprobes %>%
+  mutate(start= Pos - 1) %>%
+  mutate(newchr = paste("chr", Chr, sep="")) %>%
+  mutate(site= paste(newchr, start, Pos, sep="_")) %>%
+  mutate(probe = site)
+```
+
+#bedtools overlap with mashr 
+```{r}
+overlap_probes<-read.table("ASE_mashr_EWASOverlap.bed") %>%
+  rename(chr= V1) %>%
+  mutate(start = V2 + 400) %>%
+  mutate(end= V3 - 400) %>%
+  mutate(site=paste(chr, start, end, sep="_")) %>%
+  distinct(site); dim(overlap_probes) #overlap 340 probes
+
+overlap_sites<-read.table("ASE_mashr_EWASOverlap.bed") %>%
+  rename(chr= V4) %>%
+  mutate(start = V5) %>%
+  mutate(end= V6 ) %>%
+  mutate(site=paste(chr, start, end, sep="_")) %>%
+  distinct(site); dim(overlap_sites) #159 MD sites
+
+merged<-merge(overlap_probes, EWASprobesites, by="site");dim(merged) 
+
+EWAS_merged_traits<-merge(merged, EWAShits, by="probe_ID") %>%
+  select(probe_ID,site, trait, PMID) %>%
+  unique() #278 trait associations
+
+distinct_probes<-EWAS_merged_traits %>%
+  distinct(probe_ID); dim(distinct_probes) #134 unique probes associated with traits
+
+percent_probes<-nrow(distinct_probes) / nrow(merged); head(percent_probes)
+
+write.csv(EWAS_merged_traits, "EWAS_traits.csv")
+```
+
+
+#match with GWAS and EWAS
+```{r}
+GWAS_EWAS_MD_sites<-merge(overlap_sites, overlap_gwas_MDsites, by="site") #31 MD genetic effect sites are within 400 bp of both a GWAS and EWAS hit. 
+
+#all traits associated with gwas hits
+GWASallinfo<- GWASformat %>%
+  mutate(start= CHR_POS -1) %>%
+  mutate(new_chr=paste("chr", CHR_ID, sep="")) %>%
+  mutate(GWASsite=paste(new_chr, start, CHR_POS, sep="_"))
+GWASallinfo$GWAStrait <- GWASallinfo$"DISEASE/TRAIT"
+
+#overlap each site with a trait
+overlap_gwas_MDsites<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
+  rename(chr= V1) %>%
+  mutate(start = V2 + 400) %>%
+  mutate(end= V3 - 400) %>%
+  mutate(GWASsite=paste(chr, start, end, sep="_")) %>%
+  mutate(site=paste(V4, V5, V6, sep="_")) #114 unique GWAS hits
+
+overlap_gwas_ewas_MDsites<- subset(overlap_gwas_MDsites, site %in% GWAS_EWAS_MD_sites$site)
+
+MD_GWASsite_GWAStrait<-merge(overlap_gwas_ewas_MDsites, GWASallinfo, by="GWASsite") %>%
+  select(site, GWASsite, GWAStrait)
+
+MD_GWAS_unique<-MD_GWASsite_GWAStrait %>%
+  distinct(GWAStrait) #41 unique GWAS hits
+
+#find EWAS probes that overlap with these same 71 sites 
+EWAS_overlap_sites_GWAS<-read.table("ASE_mashr_EWASOverlap.bed") %>%
+  mutate(site=paste(V4, V5, V6, sep="_")) %>%
+  mutate(start = V2 + 400) %>%
+  mutate(end= V3 - 400) %>%
+  mutate(probe=paste(V1, start, end, sep="_")) %>%
+  filter(site %in% merged$site)
+
+#add probe_ID
+merged<-merge(EWAS_overlap_sites_GWAS, EWASprobesites, by="probe") %>%
+  rename(site=site.x) %>%
+  select(probe_ID, site, probe) #71 probes
+
+MD_EWASsite_EWAStrait<-merge(merged, EWAShits, by="probe_ID") %>%
+  rename(EWASsite = probe) %>%
+  rename(EWAStrait = trait) %>%
+  select(site, EWASsite, EWAStrait) %>%
+  unique(); dim(MD_EWASsite_EWAStrait)#those 71 probes are associated with 40 traits
+
+MD_GWASEWAS<-merge(MD_GWASsite_GWAStrait, MD_EWASsite_EWAStrait, by="site") %>%
+  distinct()
+
+write.csv(MD_GWASEWAS, "GWAS_EWAS_traits.csv")
+```
