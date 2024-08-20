@@ -18,7 +18,7 @@ library(tidyverse)
 
 
 ```{r}
-eLife<- read.delim('7Dec22_mSTARR_counts_AJL_K562.txt')
+eLife<- read.delim('Lea_eLife_mSTARR_counts.txt')
 methylated_counts<-eLife[,c(14:23)]
 ```
 
@@ -166,7 +166,7 @@ library(tidyverse)
 ```
 
 ```{r}
-RAJ<- read.table('7Dec22_mSTARR_counts_RAJ_K562.txt', h=T)
+RAJ<- read.table('Johnston_eLife_mSTARR_counts_K562.txt', h=T)
 
 methylated<-c("L31223", "L31224", "L31225" ,"L31232", "L31233", "L31234", "L31259", "L31260", "L31261", "L31268", "L31269","L31270")
 

@@ -1,0 +1,438 @@
+---
+title: "SNP_matching"
+output: html_document
+date: "2024-07-23"
+---
+
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+allSNPs<-read.table("filter_snps_set2_liftover_format.bed", h=T)
+```
+
+# Filter big SNP list for sites with DNA in both meth and unmeth
+```{r}
+DNAcounts<-read.table("/nobackup/lea_lab/petersrm/mSTARR/counts/countsDNArep_halfbothcond_400bpwin.txt")
+```
+
+#make into bed file
+```{r}
+DNAcounts$windows<-rownames(DNAcounts)
+
+DNAcounts_bed<- DNAcounts %>%
+  separate(windows, c("chr", "start", "end")) %>%
+  select(chr, start, end)
+
+write.table(DNAcounts_bed, "/nobackup/lea_lab/petersrm/mSTARR/counts/DNA_halfrepsbothcond_400bpwin.bed", quote=F, sep="\t", row.names=F, col.names=F)
+```
+
+#overlap with filter_snps_set2_liftover.bed
+
+# Make 10 sets of sites matched with those that have greater ASE in meth and those that have greater ASE in umeth  (not including sites that disrupt a CpG)
+```{r}
+snplist="/nobackup/lea_lab/petersrm/mSTARR/18Apr24_ASE_mashr_sigunmeth_noCpGs.txt"
+info_file="/nobackup/lea_lab/petersrm/mSTARR/SNP_matching/filter_snps_set2_overlapDNAwindows_format.bed"
+outfile="/nobackup/lea_lab/petersrm/mSTARR/MD.noCpG.unmeth.match_snps_DNAwinfilter.txt"
+
+#====
+
+library(tidyverse)
+library(data.table)
+library(plyr)
+
+#====
+
+d_info=fread(info_file)
+
+l2_interval=sd(d_info$L2)/10
+
+#====
+
+dg=fread(snplist,header=F)
+
+colnames(dg)="SNP"
+
+dg=dg[dg$SNP %in% d_info$SNP,]
+d_data=left_join(dg,d_info,by="SNP")
+
+#====
+
+x=paste0("V",as.character(1:10)) #10 instances of matching
+d_match=t(data.frame(x))
+colnames(d_match)=x
+d_match=d_match[-1,]
+
+#iterate over SNPs
+for (i in 1:nrow(d_data)){
+
+  #focal SNP props
+  SNP_temp=d_data$SNP[i]
+  MAF_temp=d_data$MAF[i]
+  TSSD_temp=d_data$TSSD[i]
+  gene_temp=d_data$gene[i]
+  l2_temp=d_data$L2[i]
+
+  #matching
+  min_maf=(MAF_temp)-0.02
+  max_maf=(MAF_temp)+0.02
+  if (MAF_temp<0.03){max_maf=0.03;min_maf=0.01}
+
+  d_temp=d_info[(d_info$MAF)<=max_maf & (d_info$MAF)>=min_maf & (d_info$TSSD)==TSSD_temp,]
+  d_temp$l2_diff=abs(d_temp$L2-l2_temp)
+  d_temp=d_temp[d_temp$l2_diff<l2_interval,]
+
+  d_pick=t(data.frame(d_temp[sample(1:nrow(d_temp),10,replace=T),]$SNP))
+  rownames(d_pick)=i; colnames(d_pick)=x
+  d_match=rbind(d_match,d_pick)
+  
+  print(paste0(as.character(i),": ",as.character(nrow(d_temp)),": ",as.character(length(unique(d_temp$gene)))))
+ 
+
+}
+
+
+#====
+
+write.table(d_match,file=outfile,quote = FALSE,sep="\t",row.names = F,col.names=F)
+```
+
+#run again for methylated data
+
+## bind 10 matched dataset for the background in chip atlas.
+```{r}
+methylated_match<-read.table("/nobackup/lea_lab/petersrm/mSTARR/MD.noCpG.meth.match_snps.txt")
+
+methylated_long <- methylated_match %>%
+  pivot_longer(cols = 1:10, names_to = "variable", values_to = "value") %>%
+  select(value) %>%
+  separate(value, c("chr", "end")) %>%
+  mutate(start= as.numeric(end) - 1) %>%
+  select(chr, start, end)
+
+write.table(methylated_long,file="/nobackup/lea_lab/petersrm/mSTARR/MD.meth_10match.bed",quote = FALSE,sep="\t",row.names = F,col.names=F)
+
+unmethylated_match<-read.table("/nobackup/lea_lab/petersrm/mSTARR/MD.noCpG.unmeth.match_snps.txt")
+
+unmethylated_long <- unmethylated_match %>%
+  pivot_longer(cols = 1:10, names_to = "variable", values_to = "value") %>%
+  select(value) %>%
+  separate(value, c("chr", "end")) %>%
+  mutate(start= as.numeric(end) - 1) %>%
+  select(chr, start, end)
+
+write.table(unmethylated_long,file="/nobackup/lea_lab/petersrm/mSTARR/MD.unmeth_10match.bed",quote = FALSE,sep="\t",row.names = F,col.names=F)
+```
+
+
+
+# compare GWAS and EWAS hits for our MD genetic effect sites and random set of sites
+
+# Make matched set for MD genetic effect sites including sites that disrupt a CpG
+```{r}
+MDsites<-read.table("/nobackup/lea_lab/petersrm/mSTARR/13Feb24_ASE_mashr_sigsites.bed") %>%
+  mutate(SNP= paste(V1, V3, sep="_")) %>%
+  select(SNP)
+
+write.table(MDsites, "/nobackup/lea_lab/petersrm/mSTARR/5Aug24_ASE_mashr_sigsites.txt", row.names=F)
+```
+
+```{r}
+snplist="/nobackup/lea_lab/petersrm/mSTARR/5Aug24_ASE_mashr_sigsites.txt"
+info_file="filter_snps_set2_liftover_format.bed"
+outfile="/nobackup/lea_lab/petersrm/mSTARR/MD.match_snps.txt"
+
+#====
+
+library(tidyverse)
+library(data.table)
+library(plyr)
+
+#====
+
+d_info=fread(info_file)
+
+l2_interval=sd(d_info$L2)/10
+
+#====
+
+dg=fread(snplist,header=F)
+
+colnames(dg)="SNP"
+
+dg=dg[dg$SNP %in% d_info$SNP,]
+d_data=left_join(dg,d_info,by="SNP")
+
+#====
+
+x=paste0("V",as.character(1:1000)) #1000 instances of matching
+d_match=t(data.frame(x))
+colnames(d_match)=x
+d_match=d_match[-1,]
+
+#iterate over SNPs
+for (i in 1:nrow(d_data)){
+
+  #focal SNP props
+  SNP_temp=d_data$SNP[i]
+  MAF_temp=d_data$MAF[i]
+  TSSD_temp=d_data$TSSD[i]
+  gene_temp=d_data$gene[i]
+  l2_temp=d_data$L2[i]
+
+  #matching
+  min_maf=(MAF_temp)-0.02
+  max_maf=(MAF_temp)+0.02
+  if (MAF_temp<0.03){max_maf=0.03;min_maf=0.01}
+
+  d_temp=d_info[(d_info$MAF)<=max_maf & (d_info$MAF)>=min_maf & (d_info$TSSD)==TSSD_temp,]
+  d_temp$l2_diff=abs(d_temp$L2-l2_temp)
+  d_temp=d_temp[d_temp$l2_diff<l2_interval,]
+
+  d_pick=t(data.frame(d_temp[sample(1:nrow(d_temp),1000,replace=T),]$SNP))
+  rownames(d_pick)=i; colnames(d_pick)=x
+  d_match=rbind(d_match,d_pick)
+  
+  print(paste0(as.character(i),": ",as.character(nrow(d_temp)),": ",as.character(length(unique(d_temp$gene)))))
+ 
+
+}
+
+
+#====
+
+write.table(d_match,file=outfile,quote = FALSE,sep=",",row.names = F,col.names=F)
+```
+
+
+```{r}
+d_match<-as.data.frame(fread("/nobackup/lea_lab/petersrm/mSTARR/MD.match_snps.txt"))
+
+#change to bed format and save each of 1000 matched sets
+
+for (i in 1:ncol(d_match)){
+
+  oneset<-as.data.frame(d_match[,i])
+  colnames(oneset)<- 'SNP'
+  oneset_bed<- oneset %>%
+    separate(SNP, into=c("chr", "stop")) %>%
+    mutate(start= as.numeric(stop) - 1) %>%
+    select(chr, start, stop)
+
+  
+  oneset_filtered<-na.omit(oneset_bed)
+  
+write.table(oneset_filtered, file=paste("/nobackup/lea_lab/petersrm/mSTARR/GWAS_EWAS_comparison_datasets/", i, "_matchedset.bed", sep=""), row.names=F, quote=F, sep="\t")
+  
+}
+```
+
+# ran bedtools intersect on 1000 matched sets
+
+# EWAS number of sites associated with a trait out of number of sites that match a probe. 
+```{r}
+ library(data.table)
+library(tidyverse)
+```
+
+```{r}
+EWASprobesites<-fread("/nobackup/lea_lab/petersrm/mSTARR/EWAS_probesites.txt", h=T)
+EWAShits<-fread("/nobackup/lea_lab/petersrm/mSTARR/EWAS_Atlas_associations.tsv")
+```
+
+
+```{r}
+df<-as.data.frame(matrix(NA, nrow = 1000 , ncol = 4))
+
+for (i in 1:1000) {
+  
+  overlap_probes<-read.table(paste("/nobackup/lea_lab/petersrm/mSTARR/matched_EWAS/",i,"_matchedset.bed_EWASOverlap.bed", sep="")) %>%
+    mutate(newstart = V2 + 400) %>%
+    mutate(newend = V3 - 400) %>%
+  mutate(site=paste(V1, newstart, newend, sep="_")) %>%
+  distinct(site)
+
+  
+merged<-merge(overlap_probes, EWASprobesites, by="site")  
+EWAS_results<-merge(merged, EWAShits, by="probe_ID") %>%
+  select(probe_ID, site, trait) %>%
+  unique() 
+distinct_probes<-EWAS_results %>%
+  distinct(probe_ID) 
+
+df[i,1]<-nrow(distinct_probes)
+df[i,2]<-nrow(merged)
+df[i,3]<-nrow(distinct_probes) / nrow(merged)
+df[i,4]<-nrow(EWAS_results)
+}
+
+colnames(df)<- c("distinct_probes", "probes_associated_with_traits", "percent_probes_trait_associated", "number_trait_associations")
+```
+
+```{r}
+write.table(df, "/nobackup/lea_lab/petersrm/mSTARR/EWAS_number_trait_associations.txt", quote=F)
+```
+
+#trait associations in our dataset
+```{r}
+info_file<-fread("filter_snps_set2_liftover_format.bed")
+snp_list<-read.table("/nobackup/lea_lab/petersrm/mSTARR/5Aug24_ASE_mashr_sigsites.txt",h=T)
+
+MDsnp_info_bed<-merge(snp_list, info_file, by="SNP") %>%
+  separate(SNP, c("chr", "end")) %>%
+  mutate(start= as.numeric(end) -1 ) %>%
+  select(chr, start, end)
+
+write.table(MDsnp_info_bed, file="/nobackup/lea_lab/petersrm/mSTARR/MDsnp_info.bed", quote=F, row.names=F, sep="\t", col.names=F)
+
+#intersect MDsnp_info with probes
+overlap_probes<-read.table("/nobackup/lea_lab/petersrm/mSTARR/6Aug24_ASE_mashrinfosites_EWASOverlap.bed", h=F) %>%
+  mutate(site=paste(V1, V2, V3, sep="_")) %>%
+  distinct(site)
+
+merged<-merge(overlap_probes, EWASprobesites, by="site");dim(merged) #Our sites with matched data overlap with 289 probes. 
+EWAS_results<-merge(merged, EWAShits, by="probe_ID") %>%
+  select(probe_ID,site, trait) %>%
+  unique(); dim(EWAS_results)#243 trait associations
+distinct_probes<-EWAS_results %>%
+  distinct(probe_ID); dim(distinct_probes) #112
+
+percent_probes<-nrow(distinct_probes) / nrow(merged); head(percent_probes)
+
+
+write.table(EWAS_results, "MD_trait_associations_plot.txt", quote=F)
+```
+
+
+```{r}
+ggplot(data=df, aes(x=number_trait_associations)) +
+    geom_vline(xintercept=243, color="red") +
+  geom_histogram(bins=100, color="black", fill="white") +
+  theme_bw()
+```
+
+
+
+
+# GWAS number of sites associated with a trait out of number of sites that match a probe. 
+```{r}
+GWAShits<-fread("/nobackup/lea_lab/petersrm/mSTARR/gwas_catalog_v1.0.2-associations.tsv")
+
+chr_chromosomes<- c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY")
+
+GWAShits_unformatted<-GWAShits %>%
+  filter(CHR_ID == "") %>%
+  separate(SNPS, c("chr", "pos")) %>%
+  mutate(start= as.numeric(pos) -1) %>%
+  filter(!is.na(pos)) %>%
+  filter(chr %in% chr_chromosomes) %>%
+  mutate(site= paste(chr, start, pos, sep="_")) %>%
+  select(site, "DISEASE/TRAIT", PUBMEDID)
+
+chromosomes<- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y")
+
+GWAShits_format<-GWAShits %>%
+  filter(CHR_ID > 0) %>%
+  filter(CHR_ID %in% chromosomes) %>%
+  mutate(start= as.numeric(CHR_POS)-1) %>%
+  filter(!is.na(CHR_POS)) %>%
+  mutate(chr= paste("chr", CHR_ID, sep="")) %>%
+  mutate(site= paste(chr, start, CHR_POS, sep="_")) %>%
+  select(site, "DISEASE/TRAIT", PUBMEDID)
+
+GWAShits_working<-rbind(GWAShits_format, GWAShits_unformatted)
+
+write.table(GWAShits_working, "/nobackup/lea_lab/petersrm/mSTARR/GWAShits_siteformat.txt", quote=F, col.names=F, row.names=F, sep="\t")
+
+GWASbed<- GWAShits_working %>%
+  separate(site, c("chr", "start", "stop")) %>%
+  select(chr, start, stop)
+
+write.table(GWASbed, "/nobackup/lea_lab/petersrm/mSTARR/GWAShits.bed", quote=F, col.names=F, row.names=F, sep="\t")
+```
+
+
+```{r}
+GWAShits_working <- read.table("/nobackup/lea_lab/petersrm/mSTARR/GWAShits_siteformat.txt")
+```
+
+
+```{r}
+df<-as.data.frame(matrix(NA, nrow = 1000 , ncol = 2))
+
+for (i in 1:1000) {
+  
+  overlap_gwas<-read.table(paste("/nobackup/lea_lab/petersrm/mSTARR/matched_GWAS/",i,"_matchedset.bed_GWASOverlap.bed", sep="")) %>%
+    mutate(newstart = V2 + 400) %>%
+    mutate(newend = V3 - 400) %>%
+  mutate(site=paste(V1, newstart, newend, sep="_")) %>%
+  distinct(site) #number of distinct GWAS hits
+
+merged_traits<-merge(overlap_gwas, GWAShits_working, by="site")  %>%
+  unique() #number of trait associations for the sites that intersect with a GWAS hit
+
+df[i,1]<-nrow(overlap_gwas)
+df[i,2]<-nrow(merged_traits)
+}
+
+colnames(df)<- c("distinct_GWAS_hits", "trait_associations")
+```
+
+
+```{r}
+write.table(df, "/nobackup/lea_lab/petersrm/mSTARR/GWAS_number_trait_associations.txt", quote=F)
+```
+
+
+```{r}
+hist(df$distinct_GWAS_hits)
+```
+
+```{r}
+ggplot(data=df, aes(x=distinct_GWAS_hits)) +
+    geom_vline(xintercept=106, color="red") +
+  geom_histogram(bins=100, color="black", fill="white") +
+  theme_bw()
+```
+
+
+```{r}
+ggplot(data=df, aes(x=trait_associations)) +
+    geom_vline(xintercept=144, color="red") +
+  geom_histogram(bins=100, color="black", fill="white") +
+  theme_bw()
+```
+
+#trait associations in our dataset
+```{r}
+info_file<-fread("filter_snps_set2_liftover_format.bed")
+snp_list<-read.table("/nobackup/lea_lab/petersrm/mSTARR/5Aug24_ASE_mashr_sigsites.txt",h=T)
+
+MDsnp_info_bed<-merge(snp_list, info_file, by="SNP") %>%
+  separate(SNP, c("chr", "end")) %>%
+  mutate(start= as.numeric(end) -1 ) %>%
+  select(chr, start, end)
+
+write.table(MDsnp_info_bed, file="/nobackup/lea_lab/petersrm/mSTARR/MDsnp_info.bed", quote=F, row.names=F, sep="\t", col.names=F)
+
+#intersect MDsnp_info with +/- 400bp of gwas hits
+overlap_gwas_MDsites<-read.table("/nobackup/lea_lab/petersrm/mSTARR/6Aug24_ASE_mashrinfosites_GWASOverlap.bed", h=F) %>%
+  mutate(site=paste(V4, V5, V6, sep="_")) %>%
+  distinct(site); dim(overlap_gwas_MDsites) #91 unique MD sites
+
+#overlap each site with a trait
+overlap_gwas_GWASsites<-read.table("/nobackup/lea_lab/petersrm/mSTARR/6Aug24_ASE_mashrinfosites_GWASOverlap.bed", h=F) %>%
+  rename(chr= V1) %>%
+  mutate(start = V2 + 400) %>%
+  mutate(end= V3 - 400) %>%
+  mutate(site=paste(chr, start, end, sep="_")) %>%
+  distinct(site); dim(overlap_gwas_GWASsites) #106 unique GWAS hits
+
+merged<-merge(overlap_gwas_GWASsites, GWAShits_working, by="site") %>%
+  select(site, "DISEASE/TRAIT") %>%
+  distinct(); dim(merged) #144 unique GWAS associations 
+
+write.table(merged, "MD_GWAS_trait_associations_plot.txt", quote=F)
+```
