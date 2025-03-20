@@ -36,7 +36,7 @@ Code to: Intersect MD genetic effect sites with GWAS and EWAS hits
 8) Multiplex_subsampling.Rmd
 Code to: count the number of SNPs located in regulatory windows when subsampling to different combininations of individuals; count the number of MD genetic effect sites that would be present in the assay when subsampling to different combinations of individuals
 
-Data required as input for each script, as well as the output from the scripts, are hosted on Zenodo (xx). The raw data (FASTQ files) are available on NCBI SRA at accession     PRJNA1137064. 
+Data required as input for each script, as well as the output from the scripts, are hosted on Zenodo (https://zenodo.org/records/12763233). The raw data (FASTQ files) are available on NCBI SRA at accession     PRJNA1137064. 
 
 Note that specific paths in the scripts will not work on your computer and you will need to change them accordingly.
 
