@@ -9,16 +9,16 @@ Match with GWAS hits
 ```{r}
 #made GWAS hits into bed file, expanded hits by +/- 400 bp, then intersected with 575 MD ASE sites
 
-GWAShits<- fread("GWAShits_siteformat.txt")
+GWAShits<- fread("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/GWAShits_siteformat.txt")
 colnames(GWAShits)<-c("site", "trait", "PMID")
 
 #intersect MD sites with +/- 400bp of gwas hits
-overlap_gwas_MDsites<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
+overlap_gwas_MDsites<-read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/GWAS_EWAS_overlap_files/ASE_mashr_GWASOverlap.bed", h=F) %>%
   mutate(site=paste(V4, V5, V6, sep="_")) %>%
   distinct(site); dim(overlap_gwas_MDsites) #98 unique MD sites
 
 #overlap each site with a trait
-overlap_gwas_GWASsites<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
+overlap_gwas_GWASsites<-read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/GWAS_EWAS_overlap_files/ASE_mashr_GWASOverlap.bed", h=F) %>%
   rename(chr= V1) %>%
   mutate(start = V2 + 400) %>%
   mutate(end= V3 - 400) %>%
@@ -26,13 +26,13 @@ overlap_gwas_GWASsites<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
   distinct(site); dim(overlap_gwas_GWASsites) #114 unique GWAS hits
 
 #how many directly overlap?
-direct_overlap<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
+direct_overlap<-read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/GWAS_EWAS_overlap_files/ASE_mashr_GWASOverlap.bed", h=F) %>%
    mutate(start = V2 + 400) %>%
   filter(start == V5); dim(direct_overlap) #75 directly overlap
 
 GWAS_merged_traits<-merge(overlap_gwas_GWASsites, GWAShits, by="site") %>%
   select(site, trait, PMID) %>%
-  distinct(); dim(merged) #153 unique GWAS-trait associations 
+  distinct(); dim(merged) #174 unique GWAS-trait associations 
 
 write.csv(GWAS_merged_traits, "GWAS_traits.csv")
 ```
@@ -95,8 +95,8 @@ GWASallinfo<- GWASformat %>%
 GWASallinfo$GWAStrait <- GWASallinfo$"DISEASE/TRAIT"
 
 #overlap each site with a trait
-overlap_gwas_MDsites<-read.table("ASE_mashr_GWASOverlap.bed", h=F) %>%
-  rename(chr= V1) %>%
+overlap_gwas_MDsites<-read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/GWAS_EWAS_overlap_files/ASE_mashr_GWASOverlap.bed", h=F)  %>%
+  dplyr::rename(chr= V1) %>%
   mutate(start = V2 + 400) %>%
   mutate(end= V3 - 400) %>%
   mutate(GWASsite=paste(chr, start, end, sep="_")) %>%
@@ -134,3 +134,96 @@ MD_GWASEWAS<-merge(MD_GWASsite_GWAStrait, MD_EWASsite_EWAStrait, by="site") %>%
 
 write.csv(MD_GWASEWAS, "GWAS_EWAS_traits.csv")
 ```
+
+
+#test for enrichment of 20 immune blood GWAS phenotypes from Pan-UKBB
+```{r}
+#downloaded from the Pan-UK Biobank phenotype manifest: https://docs.google.com/spreadsheets/d/1AeeADtT0U1AukliiNyiVzVRdLYPkTbruQSk38DeutU8/edit?gid=1450719288#gid=1450719288
+```
+
+```{r}
+library(data.table)
+library(stringr)
+```
+
+#All tested windows. Assuming that all the tested sites in our dataset were also tested in Pan-UKBB GWAS.
+```{r}
+inputsites<-read.table("/scratch/rpeter39/mSTARR/13Feb24_ASEmashr_inputsites_signed.txt") #1359 total tested
+
+inputbed<-inputsites %>%
+  separate(site, c("chr", "pos")) %>%
+  mutate(chrom= gsub("chr", "", chr)) %>%
+  mutate(loc2= as.numeric(pos) + 201) %>%
+  mutate(loc1= as.numeric(pos) - 200) %>%
+  mutate(site=paste(chr, pos, sep="_")) %>%
+  dplyr::select(chrom, loc1, loc2, site)
+
+write.table(inputbed, "/scratch/rpeter39/mSTARR/ASEmashr_inputsites200.bed", sep="\t", quote=F, row.names=F, col.names=F)
+```
+
+```{r}
+#intersected significant sites associated with 20 immune phenotypes 
+bedtools intersect -a /scratch/rpeter39/mSTARR/ASEmashr_inputsites200.bed -b /scratch/rpeter39/mSTARR/immune_GWAS/${trait}.bed -u \
+> ${trait}_overlap.bed
+```
+
+```{r}
+temp <- list.files(path = "/scratch/rpeter39/mSTARR/immune_GWAS", pattern="*overlap.bed")
+
+# read in files into a list
+gwasFiles = lapply(temp, function(x){
+  tmp <- read.delim(file = paste0("/scratch/rpeter39/mSTARR/immune_GWAS/", x),
+                    sep = '\t', header = F)
+  return(tmp)
+})
+
+names(gwasFiles) <- gsub(c(temp), pattern = ".overlap.bed", replacement = "")
+```
+
+#Test for enrichment for each trait separately
+```{r}
+all_sites <-read.table("/scratch/rpeter39/mSTARR/13Feb24_ASEmashr_inputsites_signed.txt") %>%
+  separate(site, c("chr", "pos")) %>%
+  mutate(loc2= as.numeric(pos) + 201) %>%
+  mutate(loc1= as.numeric(pos) - 200) %>%
+    mutate(site = paste(chr,pos, sep="_")) %>%
+  dplyr::select(chr, loc1, loc2, site) 
+
+
+  # Add blank columns for each region type and then add 1's where the site is in that region 
+blood_traits <- names(gwasFiles)
+
+for (k in c(blood_traits)) { # make new column for each regulatory region, fill with 0
+  all_sites[, paste0(k)] <- 0
+}
+
+
+for(k in c(blood_traits)){
+    
+  # Fill with 1 if site has a specific annotation in the region
+    selected_df_name <- names(gwasFiles)[grepl(k, names(gwasFiles))]
+trait_file<-gwasFiles[[selected_df_name]]
+all_sites[all_sites$site %in% trait_file$V4, k] <- 1
+  }
+
+#match with sig sites
+sigsites<-read.table("/scratch/rpeter39/mSTARR/ASE_mashr_results.txt") %>%
+  filter(info == "MD")
+
+all_sites$sig <- 0
+all_sites[all_sites$site %in% sigsites$site, "sig"] <- 1
+  
+# fisher test for each individual annotation
+results_df <- as.data.frame(matrix(NA, nrow = 20, ncol = 2))
+rownames(results_df) <- blood_traits
+colnames(results_df) <- c("pvalue", "OR")
+
+  for(k in c(blood_traits)){
+    FT<-fisher.test(table(all_sites[,k], all_sites$sig))
+    results_df[k,"pvalue"]<- FT$p.value
+    results_df[k,"OR"] <- FT$estimate[[1]]
+}
+
+write.table(results_df, '20Mar25_immuneGWAS_enrichment.txt',quote=F,sep='\t')
+```
+
