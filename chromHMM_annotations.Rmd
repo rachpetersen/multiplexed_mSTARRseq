@@ -11,12 +11,12 @@ date: "2024-08-13"
 
 # make bed file of regulatory sites found in unmeth or meth
 ```{r}
-unmeth_results<- read.table('model1_unmethonly_results.txt', header=T)
+unmeth_results<- read.table('/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/model_results/model1_unmethonly_results.txt', header=T)
 unmeth_results$windows <- rownames(unmeth_results)
 colnames(unmeth_results)<- c("pval", "beta", "se", "id", "q", "info", "window")
 
 
-meth_results<- read.table('model1_methonly_results.txt', header=T)
+meth_results<- read.table('/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/model_results/model1_methonly_results.txt', header=T)
 meth_results$windows <- rownames(meth_results)
 colnames(meth_results)<- c("pval", "beta", "se", "id", "q", "info", "window")
 
@@ -1669,3 +1669,33 @@ all_anno$log2<-log2(all_anno$OR)
 
 write.csv(all_anno, "ASEplusmono_site_chromHMM_annotations.csv")
 ```
+
+
+
+
+# Proportion of input fragment windows that fall into each annotation
+```{r}
+model1_allresults<-rbind(both_reg, both_notreg) %>%
+  separate(window, c("chr", "start", "stop"))
+model1_allresults$start<-as.numeric(model1_allresults$start)
+model1_allresults$stop<-as.numeric(model1_allresults$stop)
+
+StrongEnhancer4 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_ASEsigplusmono/chromHMM_intersect_4StrongEnhancer (2).bed")
+
+colnames(ActivePromoter1) <- c("chr", "start", "stop", "chromHMM")
+
+SE4join <- left_join(model1_allresults, StrongEnhancer4, by=c("chr", "start", "stop")) %>%
+  mutate(AP1 = ifelse(chromHMM == 0, 0, 1)) %>%
+  dplyr::select(-chromHMM)
+
+
+StrongEnhancer5 <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/chromHMM/chromHMM_sigwindows/chromHMM_intersect_5StrongEnhancer.bed")
+colnames(StrongEnhancer5) <- c("chr", "start", "stop", "chromHMM")
+
+SE5join <- left_join(model1_allresults, StrongEnhancer5, by=c("chr", "start", "stop")) %>%
+  mutate(chromHMMedit = ifelse(chromHMM == 0,0,1))
+
+both<- merge(SE4join, SE5join)
+both$strong_enhancer_any<-
+```
+

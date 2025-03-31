@@ -20,10 +20,11 @@ library(qvalue)
 
 #load ref and total count dataframes
 ```{r}
-totalcount<- read.table("ASE_totalcounts.txt")
-refcount<- read.table("ASE_refcounts.txt")
-meta<- read.table("replicateinfo.txt", header=T)
+totalcount<- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/ASE_totalcounts.txt")
+refcount<- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/ASE_refcounts.txt")
+meta<- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/replicateinfo.txt", header=T)
 ```
+
 
 #filter for >0 counts in at least half of RNA replicates in either meth or unmeth, >0 counts in at least half of DNA replicates in both condition
 ```{r}
@@ -89,25 +90,25 @@ sites2remove<- rbind(closesiteslag, closesites)[[1]]
 totalcounts_keep_distfilter<- subset(totalcounts_keep, !c(site %in% sites2remove))
 refcounts_keep_distfilter<- subset(refcounts_keep, !c(site %in% sites2remove))
 
-write.table(totalcounts_keep_distfilter, "totalcount_keepsites_distfilt.txt")
-write.table(refcounts_keep_distfilter, "refcount_keepsites_distfilt.txt")
+#write.table(totalcounts_keep_distfilter, "totalcount_keepsites_distfilt.txt")
+#write.table(refcounts_keep_distfilter, "refcount_keepsites_distfilt.txt")
 ```
 
 ###  model methylated data  ###
 ```{r}
-totalcount<- read.table("totalcount_keepsites_distfilt.txt")
-refcount<- read.table("refcount_keepsites_distfilt.txt")
-meta<- read.table("pql_meta.txt", header=T)
+totalcount<- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/totalcount_keepsites_distfilt.txt")
+refcount<- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/refcount_keepsites_distfilt.txt")
+meta<- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/pql_meta.txt", header=T)
 ```
 
 ## filter for sites that are in windows with some degree of regulatory activity in model 1 for methylated condition
 ```{r}
-mod1_meth_results_posbeta<- read.table("model1_methonly_results.txt") %>%
+mod1_meth_results_posbeta<- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/model_results/model1_methonly_results.txt") %>%
   filter(beta_meth > 0)
 
 #bedtools intersect totalcounts_keep_distfilter with mod1_meth_results_posbeta windows
 
-filtered_methsites<-read.table("ASE_methsites_filtered.bed") %>%
+filtered_methsites<-read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/ASE_methsites_filtered.bed") %>%
   mutate(site=paste(V1, V3, sep="_")) 
 ```
 
@@ -185,7 +186,7 @@ mod1_unmeth_results_posbeta<- read.table("model1_unmethonly_results.txt") %>%
 
 #bedtools intersect totalcounts_keep_distfilter with mod1_unmeth_results_posbeta windows
 
-filtered_unmethsites<-read.table("ASE_unmethsites_filtered.bed") %>%
+filtered_unmethsites<-read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/ASE_unmethsites_filtered.bed") %>%
   mutate(site=paste(V1, V3, sep="_")) 
 ```
 
@@ -263,8 +264,8 @@ write.table(df, "ASE_unmeth_results.txt")
 
 ```{r}
 ###merge sites in both analyses
-methresults <- read.table("ASE_meth_results.txt")
-unmethresults <- read.table("ASE_unmeth_results.txt")
+methresults <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/model_results/ASE_meth_results.txt")
+unmethresults <- read.table("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/model_results/ASE_unmeth_results.txt")
 
 match_ase<- merge(methresults, unmethresults, by="site") %>%
   na.omit(); dim(match_ase) #1359
@@ -342,3 +343,36 @@ colnames(lfsr_pm)<-c("site", "meth_pm", "unmeth_pm", "meth_lfsr", "unmeth_lfsr",
 write.table(lfsr_pm,"ASE_mashr_results.txt")
 ```
 
+
+#coverage distribution across sites for DNA and RNA in both conditions
+```{r}
+Meth_totalcounts_testable$RNA <- rowSums(Meth_totalcounts_testable[, 2:6])
+Meth_totalcounts_testable$DNA <- rowSums(Meth_totalcounts_testable[, 7:11])
+meth_sumcounts<-Meth_totalcounts_testable[,c("site", "RNA", "DNA")]
+meth_sumcounts$cond<-"Methylated"
+meth_sumcounts_long<-pivot_longer(data=meth_sumcounts, col=2:3, names_to="type", values_to="counts")
+
+Unmeth_totalcounts_testable$RNA <- rowSums(Unmeth_totalcounts_testable[, 2:7])
+Unmeth_totalcounts_testable$DNA <- rowSums(Unmeth_totalcounts_testable[, 8:13])
+unmeth_sumcounts<-Unmeth_totalcounts_testable[,c("site", "RNA", "DNA")]
+unmeth_sumcounts$cond<-"Unmethylated"
+unmeth_sumcounts_long<-pivot_longer(data=unmeth_sumcounts, col=2:3, names_to="type", values_to="counts")
+
+meth_unmeth<-rbind(meth_sumcounts_long, unmeth_sumcounts_long)
+
+DNA_meth_unmeth<-subset(meth_unmeth, type == "DNA")
+
+hist(log10(DNA_meth_unmeth$counts))
+mean(DNA_meth_unmeth$counts)
+sd(DNA_meth_unmeth$counts)
+
+Totalcov_per_variant_hist<-ggplot(data=DNA_meth_unmeth, aes(x=log10(counts)))+
+  geom_histogram(fill="white", color="darkgrey") +
+  theme_bw() +
+  theme(plot.title=element_text(hjust=0.5)) +
+  ylab("Number of variants") +
+  xlab("log10(read count)") +
+  ggtitle("Distribution of total coverage per variant");Totalcov_per_variant_hist
+
+ggsave("/Users/rachelpetersen/Library/CloudStorage/GoogleDrive-rpetersen42@gmail.com/Other computers/My MacBook Pro (1)/Lea Lab/Human_mSTARRseq/Totalcov_per_variant.pdf", Totalcov_per_variant_hist, width=4, height=3)
+```
