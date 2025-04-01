@@ -1,0 +1,240 @@
+---
+title: "mSTARR_invivo_methylation"
+output: html_document
+date: "2025-04-01"
+---
+
+#Interindividual variation in methylation in monocytes
+```{r}
+monocyte_data<- readRDS("Interindividual_invivo_meth_monocytes.rds")
+common_sites <- purrr::reduce(monocyte_data, inner_join, by = c("V1", "V2", "V3"))
+
+colnames(common_sites) <- c("chromosome", "start", "end", "methylation2", "methylation3", "methylation4")
+
+common_sites <- common_sites %>%
+  filter(methylation2 != -1 & methylation3 != -1 & methylation4 != -1) %>%
+  mutate(variable = ifelse(
+      (methylation2 < 0.1 & methylation3 < 0.1 & methylation4 < 0.1) | 
+      (methylation2 > 0.9 & methylation3 > 0.9 & methylation4 > 0.9) | 
+      (round(methylation2,1) == round(methylation3,1) & round(methylation3,1) == round(methylation4,1)),
+      "N", "Y"))
+
+table(common_sites$variable) #13.9 million nonvariable, 12.9 million variable
+```
+
+#test near MD sites
+```{r}
+library(GenomicRanges)
+library(IRanges)
+library(tidyr)
+```
+
+```{r}
+mod2_MD<-read.table("model2_mashr_results.txt") %>%
+  filter(info=="MD")
+
+ranges_df <- mod2_MD %>%
+  tidyr::separate(site, c("chr", "pos1", "pos2"))
+
+
+# Convert to model 2 results to GRanges object
+ranges_gr <- GRanges(seqnames = ranges_df$chr,
+                     ranges = IRanges(start = as.numeric(ranges_df$pos1), end = as.numeric(ranges_df$pos2)), info=ranges_df$info)
+
+# Convert monocyte CpG positions to GRanges (start and end are the same for individual sites)
+cpg_gr <- GRanges(seqnames = common_sites$chromosome,
+                  ranges = IRanges(start = common_sites$start, end = common_sites$end), variable=common_sites$variable)
+
+# Find overlaps
+overlaps <- findOverlaps(cpg_gr, ranges_gr)
+
+# Extract overlapping CpG sites
+cpg_overlapping <- cpg_gr[queryHits(overlaps)]
+ranges_overlapping <- ranges_gr[subjectHits(overlaps)]
+
+# View results
+overlapping_df <- data.frame(chr = seqnames(cpg_overlapping),
+                            CpG_position = start(cpg_overlapping),
+                            variable = cpg_overlapping$variable,
+                            range_start = start(ranges_overlapping),
+                            range_end = end(ranges_overlapping),
+                            significant = ranges_overlapping$info)
+
+
+
+df_condensed <- overlapping_df %>%
+  mutate(SNPsite= paste(chr, range_start, sep="_")) %>%
+  group_by(SNPsite) %>%
+  mutate(variable_any = ifelse(any(variable == "Y"), "Y", "N")) %>%
+  ungroup() %>%
+  dplyr::select(SNPsite, variable_any, significant) %>%
+  distinct()
+
+tab<-table(df_condensed$variable_any, df_condensed$significant)
+print(tab)
+
+#3043/4052= 75.1%
+```
+
+
+#test near MD ASE sites
+```{r}
+ASE_MD<-read.table("ASE_mashr_results.txt") %>%
+  filter(info=="MD")
+
+ranges_df <- ASE_MD %>%
+  tidyr::separate(site, c("chr", "pos"))
+
+# Convert ASE mashr results to GRanges object
+ranges_gr <- GRanges(seqnames = ranges_df$chr,
+                     ranges = IRanges(start = as.numeric(ranges_df$pos)-200, end = as.numeric(ranges_df$pos)+200), info=ranges_df$info)
+
+# Convert monocyte CpG positions to GRanges (start and end are the same for individual sites)
+cpg_gr <- GRanges(seqnames = common_sites$chromosome,
+                  ranges = IRanges(start = common_sites$start, end = common_sites$end), variable=common_sites$variable)
+
+# Find overlaps
+overlaps <- findOverlaps(cpg_gr, ranges_gr)
+
+# Extract overlapping CpG sites
+cpg_overlapping <- cpg_gr[queryHits(overlaps)]
+ranges_overlapping <- ranges_gr[subjectHits(overlaps)]
+
+# View results
+overlapping_df <- data.frame(chr = seqnames(cpg_overlapping),
+                            CpG_position = start(cpg_overlapping),
+                            variable = cpg_overlapping$variable,
+                            range_start = start(ranges_overlapping),
+                            range_end = end(ranges_overlapping),
+                            significant = ranges_overlapping$info)
+
+
+
+df_condensed <- overlapping_df %>%
+  mutate(SNPsite= paste(chr, range_start, sep="_")) %>%
+  group_by(SNPsite) %>%
+  mutate(variable_any = ifelse(any(variable == "Y"), "Y", "N")) %>%
+  ungroup() %>%
+  dplyr::select(SNPsite, variable_any, significant) %>%
+  distinct()
+
+tab<-table(df_condensed$variable_any, df_condensed$significant)
+print(tab)
+
+#558/575= 97.0%
+```
+
+
+
+#Intraindividual variation in methylation in 5 blood cell types
+
+```{r}
+bloodcell_data<-readRDS("Intraindividual_invivo_meth_bloodcells.rds")
+common_sites <- purrr::reduce(bloodcell_data, inner_join, by = c("V1", "V2", "V3"))
+
+colnames(common_sites) <- c("chromosome", "start", "end", "monocyte", "granulocyte", "bcell", "tcell", "NKcell")
+
+common_sites <- common_sites %>%
+  filter(monocyte != -1 & granulocyte != -1 & bcell != -1 & tcell != -1 & NKcell != -1) %>%
+  mutate(
+    variable = ifelse(
+      (monocyte < 0.10 & granulocyte < 0.10 & bcell < 0.10 & tcell < 0.10 & NKcell < 0.10) | 
+      (monocyte > 0.90 & granulocyte > 0.9 & bcell > 0.9 & tcell > 0.9 & NKcell > 0.9) | 
+      (round(monocyte,1) == round(granulocyte,1) & round(granulocyte,1) == round(bcell,1) & round(bcell,1) == round(tcell,1) & round(tcell,1) == round(NKcell,1)),
+      "N", "Y"
+    )
+  )
+
+
+table(common_sites$variable) #8 million nonvariable, 18.7 million variable
+```
+
+## test MD regulatory windows
+```{r}
+mod2_MD<-read.table("/scratch/rpeter39/mSTARR/model2_mashr_results.txt") %>%
+  filter(info=="MD")
+
+ranges_df <- mod2_MD %>%
+  tidyr::separate(site, c("chr", "pos1", "pos2"))
+
+# Convert to GRanges object
+ranges_gr <- GRanges(seqnames = ranges_df$chr,
+                     ranges = IRanges(start = as.numeric(ranges_df$pos1), end = as.numeric(ranges_df$pos2)), info=ranges_df$info)
+
+# Convert CpG positions to GRanges (start and end are the same for individual sites)
+cpg_gr <- GRanges(seqnames = common_sites$chromosome,
+                  ranges = IRanges(start = common_sites$start, end = common_sites$end), variable=common_sites$variable)
+
+# Find overlaps
+overlaps <- findOverlaps(ranges_gr, cpg_gr, maxgap=-1L)
+
+# Extract overlapping CpG sites
+cpg_overlapping <- cpg_gr[subjectHits(overlaps)]
+ranges_overlapping <- ranges_gr[queryHits(overlaps)]
+
+# View results
+overlapping_df <- data.frame(chr = seqnames(cpg_overlapping),
+                            CpG_position = start(cpg_overlapping),
+                            variable = cpg_overlapping$variable,
+                            range_start = start(ranges_overlapping),
+                            range_end = end(ranges_overlapping),
+                            significant = ranges_overlapping$info)
+
+
+
+df_condensed <- overlapping_df %>%
+  mutate(window= paste(chr, range_start, sep="_")) %>%
+  group_by(window) %>%
+  mutate(variable_any = ifelse(any(variable == "Y"), "Y", "N")) %>%
+  ungroup() %>%
+  dplyr::select(window, variable_any, significant) %>%
+  distinct()
+
+tab<-table(df_condensed$variable_any, df_condensed$significant)
+print(tab)
+
+#3171/4052= 78.3%
+```
+
+```{r}
+ASE_MD<-read.table("ASE_mashr_results.txt") %>%
+  filter(info=="MD")
+
+# Convert to GRanges object
+ranges_gr <- GRanges(seqnames = ranges_df$chr,
+                     ranges = IRanges(start = as.numeric(ranges_df$pos)-200, end = as.numeric(ranges_df$pos)+200), info=ranges_df$info)
+
+# Convert CpG positions to GRanges (start and end are the same for individual sites)
+cpg_gr <- GRanges(seqnames = common_sites$chromosome,
+                  ranges = IRanges(start = common_sites$start, end = common_sites$end), variable=common_sites$variable)
+
+# Find overlaps
+overlaps <- findOverlaps(cpg_gr, ranges_gr)
+
+# Extract overlapping CpG sites
+cpg_overlapping <- cpg_gr[queryHits(overlaps)]
+ranges_overlapping <- ranges_gr[subjectHits(overlaps)]
+
+# View results
+overlapping_df <- data.frame(chr = seqnames(cpg_overlapping),
+                            CpG_position = start(cpg_overlapping),
+                            variable = cpg_overlapping$variable,
+                            range_start = start(ranges_overlapping),
+                            range_end = end(ranges_overlapping),
+                            significant = ranges_overlapping$info)
+
+
+
+df_condensed <- overlapping_df %>%
+  mutate(SNPsite= paste(chr, range_start, sep="_")) %>%
+  group_by(SNPsite) %>%
+  mutate(variable_any = ifelse(any(variable == "Y"), "Y", "N")) %>%
+  ungroup() %>%
+  dplyr::select(SNPsite, variable_any, significant) %>%
+  distinct()
+
+tab<-table(df_condensed$variable_any, df_condensed$significant)
+print(tab)
+```
+
+

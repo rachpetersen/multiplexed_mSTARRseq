@@ -148,22 +148,22 @@ library(stringr)
 
 #All tested windows. Assuming that all the tested sites in our dataset were also tested in Pan-UKBB GWAS.
 ```{r}
-inputsites<-read.table("/scratch/rpeter39/mSTARR/13Feb24_ASEmashr_inputsites_signed.txt") #1359 total tested
+inputsites<-read.table("ASEmashr_inputsites.txt") #1359 total tested
 
 inputbed<-inputsites %>%
   separate(site, c("chr", "pos")) %>%
   mutate(chrom= gsub("chr", "", chr)) %>%
-  mutate(loc2= as.numeric(pos) + 201) %>%
-  mutate(loc1= as.numeric(pos) - 200) %>%
+  mutate(loc2= as.numeric(pos) + 401) %>%
+  mutate(loc1= as.numeric(pos) - 400) %>%
   mutate(site=paste(chr, pos, sep="_")) %>%
   dplyr::select(chrom, loc1, loc2, site)
 
-write.table(inputbed, "/scratch/rpeter39/mSTARR/ASEmashr_inputsites200.bed", sep="\t", quote=F, row.names=F, col.names=F)
+write.table(inputbed, "ASEmashr_inputsites400.bed", sep="\t", quote=F, row.names=F, col.names=F)
 ```
 
 ```{r}
 #intersected significant sites associated with 20 immune phenotypes 
-bedtools intersect -a /scratch/rpeter39/mSTARR/ASEmashr_inputsites200.bed -b /scratch/rpeter39/mSTARR/immune_GWAS/${trait}.bed -u \
+bedtools intersect -a ASEmashr_inputsites400.bed -b /scratch/rpeter39/mSTARR/immune_GWAS/${trait}.bed -u \
 > ${trait}_overlap.bed
 ```
 
@@ -178,19 +178,21 @@ gwasFiles = lapply(temp, function(x){
 })
 
 names(gwasFiles) <- gsub(c(temp), pattern = ".overlap.bed", replacement = "")
+saveRDS(gwasFiles, "blood_gwas_overlaps.rds")
 ```
 
 #Test for enrichment for each trait separately
 ```{r}
-all_sites <-read.table("/scratch/rpeter39/mSTARR/13Feb24_ASEmashr_inputsites_signed.txt") %>%
+all_sites <-read.table("ASEmashr_inputsites.txt") %>%
   separate(site, c("chr", "pos")) %>%
-  mutate(loc2= as.numeric(pos) + 201) %>%
-  mutate(loc1= as.numeric(pos) - 200) %>%
+  mutate(loc2= as.numeric(pos) + 401) %>%
+  mutate(loc1= as.numeric(pos) - 400) %>%
     mutate(site = paste(chr,pos, sep="_")) %>%
   dplyr::select(chr, loc1, loc2, site) 
 
 
   # Add blank columns for each region type and then add 1's where the site is in that region 
+gwasFiles<-readRDS("blood_gwas_overlaps.rds")
 blood_traits <- names(gwasFiles)
 
 for (k in c(blood_traits)) { # make new column for each regulatory region, fill with 0
@@ -207,7 +209,7 @@ all_sites[all_sites$site %in% trait_file$V4, k] <- 1
   }
 
 #match with sig sites
-sigsites<-read.table("/scratch/rpeter39/mSTARR/ASE_mashr_results.txt") %>%
+sigsites<-read.table("ASE_mashr_results.txt") %>%
   filter(info == "MD")
 
 all_sites$sig <- 0
@@ -224,6 +226,6 @@ colnames(results_df) <- c("pvalue", "OR")
     results_df[k,"OR"] <- FT$estimate[[1]]
 }
 
-write.table(results_df, '20Mar25_immuneGWAS_enrichment.txt',quote=F,sep='\t')
+write.table(results_df, 'ImmuneGWAS_enrichment.txt',quote=F,sep='\t')
 ```
 
