@@ -34,7 +34,7 @@ Code to: generate background SNP sets that are matched with sites in a test set 
     code: https://github.com/hakha-most/gwas_eqtl
 
 8) GWAS_EWAS_overlap.Rmd
-Code to: Intersect MD genetic effect sites with GWAS and EWAS hits from the NHGRI-EBI GWAS catalog and perform Fisher's test for enrichment of MD genetic effect sites near GWAS sites associated with 20 immune blood traits from Pan-UK Biobank.
+Code to: Intersect MD genetic effect sites with GWAS and EWAS hits from the NHGRI-EBI GWAS catalog and perform Fisher's test for enrichment of MD genetic effect sites near GWAS sites associated with 20 immune blood traits from Pan-UK Biobank. Requires the downloading of samples GSM5652302, GSM5652303, and GSM5652304 from Loyfer et al. 2023 to assess interindividual variation in invivo methylation in monocytes, and GSM5652302, GSM5652313, GSM5652316, GSM5652279, GSM5652299 from Loyfer et al. 2023 to assess intraindividual variation in invivo methylation in monocytes, granulocytes, NK cells, helper T-cells, and B-cells.
 
 9) Invivo_methylation_overlap.Rmd
 Code to: Intersect MD genetic effect sites with CpG sites characterized for in vivo methylation in monocytes across 3 individuals (inter-individual variation) and across 5 blood cell types in a single individual (intra-individual variation)
